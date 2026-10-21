@@ -1,0 +1,10 @@
+**/bin/
+**/obj/
+build/
+dist/
+*.dll
+*.pdb
+*.zip
+*.log
+.vs/
+.idea/
