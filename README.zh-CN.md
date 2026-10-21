@@ -18,7 +18,23 @@ L 空格 → 鼠标指定起点 → 光标指向画线方向 → 100-5 回车
 3. 加载后默认开启。首次可能显示未签名文件提示，请自行核对来源；无需关闭 `SECURELOAD`。
 4. 按上面的画线步骤试用。Esc 结束后输入 `CM3CHECK`，查看实际线长是否为 95。
 
-每次启动自动加载：把整个 `CadMath03.bundle` 复制到 `%APPDATA%\Autodesk\ApplicationPlugins\`，保存自己的图纸后重启 CAD。
+### 设置自动启动：AP → 启动组 → 内容 → 添加
+
+设置一次，以后启动 CAD 时自动加载并开启，不必每次输入 `NETLOAD`。
+
+1. 把解压出来的整个 `CadMath03.bundle` 放到 `C:\CadMath03\`，确认 DLL 位于 `C:\CadMath03\CadMath03.bundle\Contents\Win64\CadMath03.dll`。
+2. [下载 CadMath03-Startup.lsp](https://raw.githubusercontent.com/Oreak-jack/autocad-inline-math/main/startup/CadMath03-Startup.lsp)，另存为 `C:\CadMath03\CadMath03-Startup.lsp`，注意文件名不能变成 `.lsp.txt`。如果插件放在其他位置，用记事本修改 LSP 中的 DLL 路径，路径分隔符用 `/`。
+3. CAD 输入 **`AP` → 回车 →「启动组」中的「内容…」→「添加…」**，选中 `CadMath03-Startup.lsp`，点击「打开」，确认它出现在启动组列表中，再关闭两个窗口。如果 `AP` 别名无效，输入完整命令 `APPLOAD`。
+4. 若出现可信位置提示，在 `OPTIONS` →「文件」→「可信任的位置」中添加你自己的插件目录。不要全局关闭安全加载。
+5. 保存图纸后关闭并重新启动 CAD，打开图纸，输入 `CM3STATUS` 检查是否开启；再按上面的画线流程输入 `100-5`，用 `CM3CHECK` 检查线长。
+
+**启动组里添加的是配套 `.lsp` 引导文件。** 本插件本体是 .NET DLL，通过引导文件中的 `NETLOAD` 加载，不要直接把 DLL 当成 LSP 加入启动组。该启动组引导方式尚未单独在 CAD 中实测，请按第 5 步验证；当前会话仍可使用上面的手动 `NETLOAD`。
+
+另一种自动加载方式：把整个 `CadMath03.bundle` 复制到 `%APPDATA%\Autodesk\ApplicationPlugins\`，保存图纸后重启 CAD。两种自动加载方式选一种即可。
+
+取消启动组自动加载：`AP` →「启动组」→「内容…」→ 选中 `CadMath03-Startup.lsp` →「删除」；当前会话输入 `CM3OFF` 即可停用。
+
+### 开关命令
 
 - `CM3OFF`：立即停用。
 - `CM3ON`：重新启用。

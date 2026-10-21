@@ -24,6 +24,8 @@ Windows, full AutoCAD 2025 or 2026, x64. AutoCAD LT, macOS and web are not suppo
 
 Optional startup installation: copy the complete `CadMath03.bundle` folder into `%APPDATA%\Autodesk\ApplicationPlugins\`, then restart AutoCAD after saving your drawings. To uninstall, close AutoCAD and move/remove that bundle.
 
+Alternatively, use **`AP` / `APPLOAD` → Startup Suite → Contents → Add** with [CadMath03-Startup.lsp](startup/CadMath03-Startup.lsp). Put the extracted bundle at `C:\CadMath03\CadMath03.bundle`, save the LSP locally, and add that LSP to the suite. For a different location, edit the DLL path inside the LSP using forward slashes. Add your chosen plugin directory to trusted locations if prompted. The LSP calls `NETLOAD`; do not add the .NET DLL itself as a LISP startup file. Use only one autoload method. Restart AutoCAD, open a drawing, and check `CM3STATUS` and a test line. This Startup Suite helper has not been separately tested in AutoCAD. See the [Chinese step-by-step instructions](README.zh-CN.md). To remove it, select the LSP in Startup Suite Contents and choose Remove; `CM3OFF` disables it in the current session.
+
 | Command | Purpose |
 |---|---|
 | `CM3OFF` | Disable arithmetic interception immediately |
