@@ -18,4 +18,10 @@ void Policy(string s, CadMath03.Decision expected, string value="",bool point=tr
 foreach(var s in new[]{"95","-5","+5","1e-3","-1e+5",""," ","Undo","_C","(getvar \"x\")","(+ 100 20)","(- 100 5)","(* 2 3)","(/ 8 2)","1;LINE","1\nLINE","1/0;QUIT","100毫米","文字100-5"})Policy(s,CadMath03.Decision.Pass);
 Policy("100-5",CadMath03.Decision.Replace,"95");Policy("(50-10)/2",CadMath03.Decision.Replace,"20");Policy("@100-5,20/2",CadMath03.Decision.Replace,"@95,10");Policy("10*-2",CadMath03.Decision.Replace,"-20");Policy("(0-5)",CadMath03.Decision.Replace,"-5");
 Policy("1/0",CadMath03.Decision.Reject);Policy("(10-2",CadMath03.Decision.Reject);Policy(new string('1',513)+"-5",CadMath03.Decision.Reject);Policy("3/2",CadMath03.Decision.Reject,"",false,true);Policy("@100-5,0",CadMath03.Decision.Reject,"",false);
+// LENGTHEN scalar prompts: total length, signed delta and percentage.
+Policy("100-5",CadMath03.Decision.Replace,"95",false);
+Policy("-5/2",CadMath03.Decision.Replace,"-2.5",false);
+Policy("100+25",CadMath03.Decision.Replace,"125",false);
+Policy("(50-10)/2",CadMath03.Decision.Replace,"20",false);
+foreach(var keyword in new[]{"_Total","_Delta","_Percent"})Policy(keyword,CadMath03.Decision.Pass,"",false);
 Console.WriteLine($"PASS {policyCount} input routing regressions. Native buffer and GUI acceptance remain not_checked.");

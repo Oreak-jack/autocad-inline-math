@@ -1,4 +1,10 @@
-# Validation — v0.3.0
+# Validation — v0.3.1
+
+2026-10-22: added `LENGTHEN` to the command allow-list. All 541 parser tests and 36 routing regressions pass. Builds against AutoCAD 2025 references and local AutoCAD 2026 assemblies pass with zero warnings/errors. The release DLL uses the 2025 reference baseline. After updating the actual startup helper, the requesting user confirmed the LEN fix works in AutoCAD 2026 (**user_confirmed**); the full LENGTHEN mode matrix remains **not_checked**. See [reproducible steps](LENGTHEN-0.3.1.md).
+
+Installer: 36 isolated filesystem/registry checks and Windows PowerShell 5.1 form-construction checks pass. Custom-location registration follows Autodesk documentation. Native AutoCAD loading after installer deployment has not been tested. See [installer guide](INSTALLER.md).
+
+## Previous v0.3.0 evidence
 
 Date: 2026-10-21.
 

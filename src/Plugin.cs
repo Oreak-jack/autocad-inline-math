@@ -18,7 +18,7 @@ public sealed class Plugin : IExtensionApplication
     static int conversions;
     static readonly Dictionary<Document,Hooks> documents=new();
     static readonly string log=Path.Combine(Path.GetTempPath(),"CadMath03.log");
-    static readonly HashSet<string> allowed=new(StringComparer.OrdinalIgnoreCase) {"LINE","PLINE","CIRCLE","ARC","RECTANG","OFFSET","MOVE","COPY","ROTATE","SCALE","STRETCH","FILLET","CHAMFER","POLYGON","ELLIPSE"};
+    static readonly HashSet<string> allowed=new(StringComparer.OrdinalIgnoreCase) {"LINE","PLINE","CIRCLE","ARC","RECTANG","OFFSET","MOVE","COPY","ROTATE","SCALE","STRETCH","FILLET","CHAMFER","POLYGON","ELLIPSE","LENGTHEN"};
     public void Initialize()
     {
         // Disable only our own previously shipped plugins. No CAD settings are changed.
@@ -35,8 +35,8 @@ public sealed class Plugin : IExtensionApplication
         AcApp.DocumentManager.DocumentActivated+=Activated;
         AcApp.EnterModal+=Modal;
         AcApp.PreTranslateMessage+=Message;
-        WriteLog("loaded 0.3; actual InputBuffer API; old versions disabled");
-        AcApp.DocumentManager.MdiActiveDocument?.Editor.WriteMessage("\nCadMath 0.3 底部命令栏计算已启用。关闭：CM3OFF；状态：CM3STATUS。\n");
+        WriteLog("loaded 0.3.1; actual InputBuffer API; old versions disabled");
+        AcApp.DocumentManager.MdiActiveDocument?.Editor.WriteMessage("\nCadMath 0.3.1 底部命令栏计算已启用。关闭：CM3OFF；状态：CM3STATUS。\n");
     }
     public void Terminate()
     {
@@ -61,7 +61,7 @@ public sealed class Plugin : IExtensionApplication
     }
     [CommandMethod("CM3ON")]public static void On(){Clear();enabled=true;WriteLog("enabled");}
     [CommandMethod("CM3OFF")]public static void Off(){enabled=false;Clear();WriteLog("disabled");}
-    [CommandMethod("CM3STATUS")]public static void Status()=>AcApp.DocumentManager.MdiActiveDocument.Editor.WriteMessage($"\nCadMath 0.3 开启={enabled} 替换请求={conversions} 最后错误={lastError}\n日志：{log}\n");
+    [CommandMethod("CM3STATUS")]public static void Status()=>AcApp.DocumentManager.MdiActiveDocument.Editor.WriteMessage($"\nCadMath 0.3.1 开启={enabled} 替换请求={conversions} 最后错误={lastError}\n日志：{log}\n");
     [CommandMethod("CM3CHECK")]
     public static void Check()
     {

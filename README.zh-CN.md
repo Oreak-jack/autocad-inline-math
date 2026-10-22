@@ -1,6 +1,8 @@
 # AutoCAD Inline Math — 底部命令栏直接输入四则运算
 
-[下载 v0.3.0 安装包](https://github.com/Oreak-jack/autocad-inline-math/releases/tag/v0.3.0) · [反馈问题](https://github.com/Oreak-jack/autocad-inline-math/issues) · [English](README.md)
+**v0.3.1：**修复 LEN 长度表达式，使用者已在 AutoCAD 2026 确认可用；新增可选目录的安装器和自动下载更新入口。安装器原生自动加载仍待验证。
+
+[下载 v0.3.1 安装包](https://github.com/Oreak-jack/autocad-inline-math/releases/tag/v0.3.1) · [反馈问题](https://github.com/Oreak-jack/autocad-inline-math/issues) · [English](README.md)
 
 在 CAD 原来的底部命令栏直接输入 `100-5`、`(50-10)/2`，回车自动使用结果，不弹计算器。
 
@@ -11,7 +13,11 @@ L 空格 → 鼠标指定起点 → 光标指向画线方向 → 100-5 回车
 
 **本版面向底部命令栏，光标旁动态输入框关闭的操作方式。** 使用者已确认 v0.3 在其 AutoCAD 2026 环境可用；这不等于所有命令和版本均已完整实测。
 
-## 安装
+## 安装（推荐）
+
+下载并完整解压安装包，双击 **安装或更新.cmd**。默认安装到 CAD 插件目录，也可点击「浏览」自选位置。以后双击桌面 **CAD 四则运算 - 检查更新**：自动下载、校验，待 CAD 关闭后自动备份并安装。无需改 LSP 或手工替换 DLL。[完整安装与更新说明](docs/INSTALLER.md)
+
+## 手动安装（可选）
 
 1. 下载并解压 Release 中的 ZIP。
 2. CAD 中按 Esc 结束当前命令，输入 `NETLOAD`，选择 `CadMath03.bundle\Contents\Win64\CadMath03.dll`。
@@ -49,7 +55,7 @@ Windows x64，完整版 AutoCAD 2025/2026，目标 .NET 8。2025/2026 接口均�
 
 支持 `+ - * /`、括号、正负号、小数、科学计数法和坐标分量计算，如 `@100-5,20/2`。英文半角、小数点用句点，表达式内部不要加空格，因为空格也是提交键。
 
-实现的命令白名单：LINE、PLINE、CIRCLE、ARC、RECTANG、OFFSET、MOVE、COPY、ROTATE、SCALE、STRETCH、FILLET、CHAMFER、POLYGON、ELLIPSE。白名单代表代码尝试接管的范围，不代表全部通过原生验收。
+实现的命令白名单：LINE、PLINE、CIRCLE、ARC、RECTANG、OFFSET、MOVE、COPY、ROTATE、SCALE、STRETCH、FILLET、CHAMFER、POLYGON、ELLIPSE、LENGTHEN（LEN，v0.3.1 新增）。白名单代表代码尝试接管的范围，不代表全部通过原生验收。
 
 不支持特性面板、对话框、文字编辑器、第三方命令或光标旁动态输入。暂不支持单位后缀、英尺英寸字符串、变量、函数及球坐标。图纸单位和坐标语义仍由 CAD 处理。
 
@@ -61,7 +67,7 @@ Windows x64，完整版 AutoCAD 2025/2026，目标 .NET 8。2025/2026 接口均�
 
 除零等错误会阻止提交并发出提示音；意外异常时插件自动停用。日志位于 `%TEMP%\CadMath03.log`，上限约 1 MB。日志可能包含输入的数字表达式，公开反馈前请自行检查。
 
-`replacement_requested` 仅表示请求替换输入；`CM3CHECK` 输出的 `last LINE length=95` 才是从 CAD 图元读回的长度。541 项解析测试和 29 项输入分流测试不能替代原生操作验收。[详细验证记录](docs/VALIDATION.md)
+`replacement_requested` 仅表示请求替换输入；`CM3CHECK` 输出的 `last LINE length=95` 才是从 CAD 图元读回的长度。541 项解析测试和 36 项输入分流测试不能替代原生操作验收。[详细验证记录](docs/VALIDATION.md)
 
 ## 源码
 
