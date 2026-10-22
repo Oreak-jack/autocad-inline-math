@@ -19,12 +19,18 @@ try {
     # Tests affect only temporary files and the dedicated HKCU test subtree.
     function Assert-CadClosed { }
     $info=Get-BundleInfo $Bundle
-    Check ($info.Version -eq '0.3.1') 'payload version'
+    Check ($info.Version -eq '0.3.2') 'payload version'
     Check (@(Get-CadProducts $regRoot).Count -eq 1) 'AutoCAD discovery in isolated registry'
     Fails { Get-InstallTarget '\\server\share' } 'reject network target'
     Fails { Get-InstallTarget 'relative' } 'reject relative target'
     Fails { Get-InstallTarget 'C:\bad;path' } 'reject trusted-path delimiter'
     Check ((Get-InstallTarget 'C:\') -eq 'C:\CadMath03.bundle') 'drive root resolved correctly'
+    $hidden=Join-Path $root 'hidden-parent'
+    $null=New-Item -ItemType Directory -Path $hidden
+    [IO.File]::SetAttributes($hidden,([IO.FileAttributes]::Directory -bor [IO.FileAttributes]::Hidden -bor [IO.FileAttributes]::System))
+    Check ((Get-InstallTarget (Join-Path $hidden 'plugins')) -eq (Join-Path $hidden 'plugins\CadMath03.bundle')) 'hidden/system ancestor accepted'
+    $actualDefault=Join-Path $env:APPDATA 'Autodesk\ApplicationPlugins'
+    Check ((Get-InstallTarget $actualDefault) -eq (Join-Path $actualDefault 'CadMath03.bundle')) 'real AppData default checked without writes'
     $vk=Open-CadKey $variables
     $vk.SetValue('TRUSTEDPATHS','D:\OtherPlugin')
     $vk.SetValue('SECURELOAD',2,[Microsoft.Win32.RegistryValueKind]::DWord)
@@ -36,7 +42,7 @@ try {
     $default=Join-Path $root 'default'
     $state=Join-Path $root 'state'
     $result=Install-CadBundle -Bundle $Bundle -Parent $default -StateRoot $state -Products @($product) -DefaultParent $default
-    Check ((Get-BundleInfo $result.Target).Version -eq '0.3.1') 'first default install'
+    Check ((Get-BundleInfo $result.Target).Version -eq '0.3.2') 'first default install'
     Check (-not $result.Custom) 'default uses bundle auto-loading'
     Check ((Open-CadKey $variables).GetValue('SECURELOAD') -eq 2) 'security setting preserved'
     Check ((Open-CadKey $variables).GetValue('Unrelated') -eq 'keep-me') 'other profile values preserved'

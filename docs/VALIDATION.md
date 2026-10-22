@@ -1,3 +1,7 @@
+# Validation — v0.3.2
+
+2026-10-22: fixed installer path inspection for hidden/system ancestors (including AppData) using explicit hidden-item access. 38 isolated installer checks pass, including a read-only check of the real default AppData path. Build against the 2025 baseline passes. Runtime logic is unchanged apart from its version label; native acceptance of this package is not_checked.
+
 # Validation — v0.3.1
 
 2026-10-22: added `LENGTHEN` to the command allow-list. All 541 parser tests and 36 routing regressions pass. Builds against AutoCAD 2025 references and local AutoCAD 2026 assemblies pass with zero warnings/errors. The release DLL uses the 2025 reference baseline. After updating the actual startup helper, the requesting user confirmed the LEN fix works in AutoCAD 2026 (**user_confirmed**); the full LENGTHEN mode matrix remains **not_checked**. See [reproducible steps](LENGTHEN-0.3.1.md).

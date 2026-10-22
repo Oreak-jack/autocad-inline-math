@@ -1,8 +1,10 @@
 # AutoCAD Inline Math / CAD 命令栏四则运算
 
+**v0.3.2:** fixes the installer reporting a missing AppData folder when checking hidden/system directories. Arithmetic behavior is unchanged. Close an older installer and launch the new one before retrying.
+
 **v0.3.1:** LEN/LENGTHEN expression support, confirmed by the requesting user in AutoCAD 2026. Includes a location-selectable installer and an updater that downloads the latest stable GitHub release. Native loading after installer deployment is not yet tested.
 
-[中文说明](README.zh-CN.md) · [Download v0.3.1](https://github.com/Oreak-jack/autocad-inline-math/releases/tag/v0.3.1) · [Report a bug](https://github.com/Oreak-jack/autocad-inline-math/issues)
+[中文说明](README.zh-CN.md) · [Download v0.3.2](https://github.com/Oreak-jack/autocad-inline-math/releases/tag/v0.3.2) · [Report a bug](https://github.com/Oreak-jack/autocad-inline-math/issues)
 
 Type arithmetic expressions directly in AutoCAD's **bottom command line** while drawing. For example:
 
@@ -23,7 +25,7 @@ Extract the complete release ZIP and double-click **安装或更新.cmd**. The d
 
 Windows, full AutoCAD 2025 or 2026, x64. AutoCAD LT, macOS and web are not supported. The DLL targets .NET 8; compatibility with newer host runtime updates needs verification.
 
-1. Download and extract the ZIP from [Releases](https://github.com/Oreak-jack/autocad-inline-math/releases/tag/v0.3.1).
+1. Download and extract the ZIP from [Releases](https://github.com/Oreak-jack/autocad-inline-math/releases/tag/v0.3.2).
 2. In AutoCAD, finish the current command, run `NETLOAD`, and select `CadMath03.bundle/Contents/Win64/CadMath03.dll`.
 3. The plugin enables itself. AutoCAD may ask you to trust this unsigned DLL. Do not disable `SECURELOAD` globally.
 4. Keep cursor-side Dynamic Input off and use the bottom command line for the documented workflow. The plugin does not change your AutoCAD settings.

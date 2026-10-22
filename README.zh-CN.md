@@ -1,8 +1,10 @@
 # AutoCAD Inline Math — 底部命令栏直接输入四则运算
 
+**v0.3.2：**修复安装器检查隐藏目录时误报“找不到 AppData”的问题。计算逻辑不变。请关闭旧安装窗口，再启动新版安装器重试。
+
 **v0.3.1：**修复 LEN 长度表达式，使用者已在 AutoCAD 2026 确认可用；新增可选目录的安装器和自动下载更新入口。安装器原生自动加载仍待验证。
 
-[下载 v0.3.1 安装包](https://github.com/Oreak-jack/autocad-inline-math/releases/tag/v0.3.1) · [反馈问题](https://github.com/Oreak-jack/autocad-inline-math/issues) · [English](README.md)
+[下载 v0.3.2 安装包](https://github.com/Oreak-jack/autocad-inline-math/releases/tag/v0.3.2) · [反馈问题](https://github.com/Oreak-jack/autocad-inline-math/issues) · [English](README.md)
 
 在 CAD 原来的底部命令栏直接输入 `100-5`、`(50-10)/2`，回车自动使用结果，不弹计算器。
 

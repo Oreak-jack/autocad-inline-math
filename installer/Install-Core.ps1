@@ -39,7 +39,7 @@ function Get-InstallTarget([string]$Parent) {
     # Never traverse an existing junction/symlink when replacing directories.
     $check = Join-Path $full 'CadMath03.bundle'
     while ($check) {
-        if ((Test-Path -LiteralPath $check) -and ((Get-Item -LiteralPath $check).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw '安装路径含链接或联接，请选择普通文件夹。' }
+        if ((Test-Path -LiteralPath $check) -and ((Get-Item -LiteralPath $check -Force).Attributes -band [IO.FileAttributes]::ReparsePoint)) { throw '安装路径含链接或联接，请选择普通文件夹。' }
         $check = [IO.Path]::GetDirectoryName($check)
     }
     return Join-Path $full 'CadMath03.bundle'
