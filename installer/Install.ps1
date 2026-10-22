@@ -1,4 +1,4 @@
-﻿param([switch]$SmokeTest)
+﻿param([switch]$SmokeTest,[string]$UiTestScript)
 $ErrorActionPreference = 'Stop'
 . (Join-Path $PSScriptRoot 'Install-Core.ps1')
 Add-Type -AssemblyName System.Windows.Forms,System.Drawing
@@ -8,7 +8,12 @@ $defaultParent = Join-Path $env:APPDATA 'Autodesk\ApplicationPlugins'
 $script:pending = $null; $script:downloadJob = $null; $script:busy = $false
 $managerSource = $PSScriptRoot
 $script:managerReady = $false
-$mutex = New-Object Threading.Mutex($false,'Local\CadMathInlineMathInstaller')
+$script:bundledPath = [IO.Path]::GetFullPath((Join-Path $PSScriptRoot '..\CadMath03.bundle'))
+function Show-Notice([string]$Text,[string]$Title='CAD 四则运算',[string]$Icon='Information') {
+    [Windows.Forms.MessageBox]::Show($Text,$Title,'OK',$Icon) | Out-Null
+}
+$mutexName=if($SmokeTest -or $UiTestScript){'Local\CadMathInstallerTest-'+[guid]::NewGuid().ToString('N')}else{'Local\CadMathInlineMathInstaller'}
+$mutex = New-Object Threading.Mutex($false,$mutexName)
 if (-not $mutex.WaitOne(0)) {
     [Windows.Forms.MessageBox]::Show('另一个安装或更新窗口已经打开。','CAD 四则运算') | Out-Null
     exit 1
@@ -33,7 +38,7 @@ function Save-Manager {
 }
 $form = New-Object Windows.Forms.Form
 $form.Text = 'CAD 四则运算 · 安装与更新'
-$form.ClientSize = New-Object Drawing.Size(630,405)
+$form.ClientSize = New-Object Drawing.Size(630,450)
 $form.StartPosition = 'CenterScreen'
 $form.FormBorderStyle = 'FixedDialog'; $form.MaximizeBox=$false
 $form.Font = New-Object Drawing.Font('Microsoft YaHei UI',10)
@@ -66,11 +71,18 @@ $install.Text='下载并安装 / 更新'; $install.Location=New-Object Drawing.P
 $form.Controls.Add($install)
 $offline=New-Object Windows.Forms.Button
 $offline.Text='使用随包版本（离线）'; $offline.Location=New-Object Drawing.Point(300,320); $offline.Size=New-Object Drawing.Size(215,45)
-$offline.Visible=Test-Path -LiteralPath (Join-Path $PSScriptRoot '..\CadMath03.bundle\PackageContents.xml')
+$offline.Visible=Test-Path -LiteralPath (Join-Path $script:bundledPath 'PackageContents.xml')
 $form.Controls.Add($offline)
+$done=New-Object Windows.Forms.Button
+$done.Text='关闭'; $done.Location=New-Object Drawing.Point(520,320); $done.Size=New-Object Drawing.Size(87,45)
+$form.Controls.Add($done)
+$done.Add_Click({ $form.Close() })
+$repair=New-Object Windows.Forms.CheckBox
+$repair.Text='重新安装相同版本（修复加载配置）'; $repair.Location=New-Object Drawing.Point(22,375); $repair.Size=New-Object Drawing.Size(570,25)
+$form.Controls.Add($repair)
 $tip=New-Object Windows.Forms.Label
 $tip.Text='下载 → 校验 → 保存图纸并关闭 CAD → 自动安装 → 重新打开 CAD'
-$tip.Location=New-Object Drawing.Point(22,375); $tip.Size=New-Object Drawing.Size(585,24)
+$tip.Location=New-Object Drawing.Point(22,415); $tip.Size=New-Object Drawing.Size(585,24)
 $form.Controls.Add($tip)
 $stateFile=Join-Path $stateRoot 'install.json'
 if (Test-Path -LiteralPath $stateFile) {
@@ -88,10 +100,26 @@ $browse.Add_Click({
     $dialog.Dispose()
 })
 function Complete-Install {
-    $script:busy=$true; $install.Enabled=$false; $offline.Enabled=$false; $browse.Enabled=$false
+    $script:busy=$true; $install.Enabled=$false; $offline.Enabled=$false; $browse.Enabled=$false; $done.Enabled=$false
     try {
+        $target=Get-InstallTarget $pathBox.Text
+        if ((Test-Path -LiteralPath $stateFile) -and (Test-Path -LiteralPath $target)) {
+            $existing=Get-BundleInfo $target
+            if ([version]$existing.Version -gt [version]$script:pending.Version) { throw ('所选版本 '+$script:pending.Version+' 低于已安装版本 '+$existing.Version+'，不会降级。') }
+            if (-not $repair.Checked -and $existing.Version -eq $script:pending.Version) {
+                $incoming=Join-Path $script:pending.Bundle 'Contents\Win64\CadMath03.dll'
+                if ((Get-FileHash -LiteralPath $existing.Dll).Hash -eq (Get-FileHash -LiteralPath $incoming).Hash) {
+                    $label=if($script:pending.Origin -eq 'offline'){'随包版本'}else{'最新正式版'}
+                    $message='当前已安装 '+$existing.Version+'，与'+$label+'相同，无需重复安装。如需修复自动加载，请勾选“重新安装相同版本”后再点安装。'
+                    $status.Text=$message; $script:pending=$null; $install.Text='检查更新'; $done.Text='完成并关闭'
+                    Show-Notice $message
+                    return
+                }
+            }
+        }
         if (Get-Process -Name acad,accoreconsole -ErrorAction SilentlyContinue) {
-            $status.Text='已下载并校验。请保存图纸，关闭所有 CAD 窗口，然后点“CAD 已关闭，继续安装”。'
+            $ready=if($script:pending.Origin -eq 'offline'){'随包版本已就绪，无需联网。'}else{'已下载并校验。'}
+            $status.Text=$ready+'请保存图纸，关闭所有 CAD 窗口，然后点“CAD 已关闭，继续安装”。'
             $install.Text='CAD 已关闭，继续安装'
             return
         }
@@ -101,33 +129,44 @@ function Complete-Install {
         $result=Install-CadBundle -Bundle $script:pending.Bundle -Parent $pathBox.Text -StateRoot $stateRoot -Products $products -DefaultParent $defaultParent -Progress { param($text) $status.Text=$text; $status.Refresh() }
         $pathBox.ReadOnly=$true
         $status.Text='已安装 '+$result.Version+'。重新打开 CAD 即可使用；输入 CM3STATUS 可检查版本。以后双击桌面“CAD 四则运算 - 检查更新”。'
-        $install.Text='检查更新'; $script:pending=$null
+        $install.Text='检查更新'; $script:pending=$null; $done.Text='完成并关闭'; $repair.Checked=$false
+        Show-Notice $status.Text '安装完成'
     } catch {
         $status.Text=$_.Exception.Message
-        [Windows.Forms.MessageBox]::Show($_.Exception.Message,'安装未完成','OK','Warning') | Out-Null
+        Show-Notice $_.Exception.Message '安装未完成' 'Warning'
     } finally {
-        $script:busy=$false; $install.Enabled=$true; $offline.Enabled=$true
+        $script:busy=$false; $install.Enabled=$true; $offline.Enabled=$true; $done.Enabled=$true
         $browse.Enabled=-not $pathBox.ReadOnly
     }
 }
 $timer=New-Object Windows.Forms.Timer
 $timer.Interval=250
-$timer.Add_Tick({
+function Poll-Download {
     if ($null -eq $script:downloadJob) { return }
-    foreach ($item in @(Receive-Job -Job $script:downloadJob)) {
+    $messages=@($script:downloadJob.ChildJobs[0].Information)
+    if ($messages.Count -gt 0) { $status.Text=[string]$messages[-1].MessageData }
+    foreach ($item in @(Receive-Job -Job $script:downloadJob -InformationAction SilentlyContinue 6>$null)) {
         if ($item.Kind -eq 'progress') { $status.Text=$item.Text }
         elseif ($item.Kind -eq 'ready') { $script:pending=$item.Release }
         elseif ($item.Kind -eq 'error') { $status.Text='下载未完成，现有插件没有改变：'+$item.Text }
     }
     if ($script:downloadJob.State -in @('Completed','Failed','Stopped')) {
         # Drain results that arrived after the first Receive-Job.
-        foreach ($item in @(Receive-Job -Job $script:downloadJob)) {
+        foreach ($item in @(Receive-Job -Job $script:downloadJob -InformationAction SilentlyContinue 6>$null)) {
             if ($item.Kind -eq 'ready') { $script:pending=$item.Release }
             elseif ($item.Kind -eq 'error') { $status.Text='下载未完成，现有插件没有改变：'+$item.Text }
         }
         Remove-Job -Job $script:downloadJob; $script:downloadJob=$null
         $script:busy=$false; $install.Enabled=$true; $offline.Enabled=$true
+        $browse.Enabled=-not $pathBox.ReadOnly
         if ($script:pending) { Complete-Install }
+    }
+}
+$timer.Add_Tick({
+    try { Poll-Download } catch {
+        $status.Text='更新未完成：'+$_.Exception.Message
+        if ($script:downloadJob) { Stop-Job $script:downloadJob; Remove-Job $script:downloadJob; $script:downloadJob=$null }
+        $script:busy=$false; $install.Enabled=$true; $offline.Enabled=$true; $browse.Enabled=-not $pathBox.ReadOnly
     }
 })
 $install.Add_Click({
@@ -143,6 +182,7 @@ $install.Add_Click({
             try {
                 . $core
                 $release=Get-CadRelease $cache { param($text) Write-Information $text -InformationAction Continue }
+                $release | Add-Member -NotePropertyName Origin -NotePropertyValue online
                 [pscustomobject]@{Kind='ready';Release=$release}
             } catch { [pscustomobject]@{Kind='error';Text=$_.Exception.Message} }
         }
@@ -150,17 +190,18 @@ $install.Add_Click({
 })
 $offline.Add_Click({
     try {
-        $bundle=[IO.Path]::GetFullPath((Join-Path $managerSource '..\CadMath03.bundle'))
+        $bundle=$script:bundledPath
         $info=Get-BundleInfo $bundle
-        $script:pending=[pscustomobject]@{Bundle=$bundle;Version=$info.Version}
+        $script:pending=[pscustomobject]@{Bundle=$bundle;Version=$info.Version;Origin='offline'}
         Complete-Install
-    } catch { $status.Text=$_.Exception.Message }
+    } catch { $status.Text=$_.Exception.Message; Show-Notice $_.Exception.Message '随包安装未完成' 'Warning' }
 })
 $form.Add_FormClosing({ param($sender,$eventArgs)
     if ($script:busy -and $null -eq $script:downloadJob) { $eventArgs.Cancel=$true }
 })
 try {
-    if ($SmokeTest) { $form.CreateControl(); Write-Output 'PASS installer form construction; no settings changed.' }
+    if ($UiTestScript) { . $UiTestScript }
+    elseif ($SmokeTest) { $form.CreateControl(); Write-Output 'PASS installer form construction; no settings changed.' }
     else { $timer.Start(); [void]$form.ShowDialog() }
 } finally {
     $timer.Stop(); $timer.Dispose()

@@ -1,5 +1,9 @@
 # Validation — v0.3.2
 
+## v0.3.3 installer follow-up (2026-10-22)
+
+38 isolated backend checks and 12 actual UI event-handler checks pass. UI tests cover offline installation, waiting for CAD, continuing without network, same-version no-op, explicit repair, failure feedback, online completion/error, and the Done button closing the form. They mock the install backend and CAD process state; they do not claim native CAD acceptance. A process test confirms the CMD launcher exits before its installer child finishes. Runtime arithmetic logic is unchanged apart from version labels.
+
 2026-10-22: fixed installer path inspection for hidden/system ancestors (including AppData) using explicit hidden-item access. 38 isolated installer checks pass, including a read-only check of the real default AppData path. Build against the 2025 baseline passes. Runtime logic is unchanged apart from its version label; native acceptance of this package is not_checked.
 
 # Validation — v0.3.1
