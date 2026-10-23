@@ -1,4 +1,4 @@
-# AutoCAD Inline Math
+﻿# AutoCAD Inline Math
 
 [![tests](https://github.com/Oreak-jack/autocad-inline-math/actions/workflows/tests.yml/badge.svg)](https://github.com/Oreak-jack/autocad-inline-math/actions/workflows/tests.yml)
 
@@ -43,7 +43,7 @@ tools/setup/                   命令行安装器（PowerShell 5.1）
   CadMath-Setup.cmd            入口
   CadMath-Setup.ps1            菜单与流程
   lib/                         扫描、清单、注册表、安装/回滚、发行版访问
-  tests/Test-Setup.ps1         安装器自动化测试（24 项）
+  tests/Test-Setup.ps1         安装器自动化测试（28 项）
 src/
   CadMath.Abstractions/        契约层：PromptKind、Decision/Conversion、ICadAdapter、清单模型、HostSeries、选择算法
   CadMath.Core/                纯计算：表达式求值、坐标转换、输入判定（不引用任何 AutoCAD 程序集）
@@ -75,8 +75,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\CadMath-Setup.ps
 
 它会把负载放到 `%LOCALAPPDATA%\CadMathInlineMath\payload\<版本>`，并给检测到的每个 CAD 版本写一条 `HKCU` 注册，所以每个实例都能独立安装、更新、卸载。细节见 [docs/INSTALLER.md](docs/INSTALLER.md)。
 
+安装时还可以选择另一种方式——装到 `%APPDATA%\Autodesk\ApplicationPlugins\CadMath03.bundle`（所有 CAD 版本共享一份，Autodesk 自动扫描加载）：
+
+```powershell
+# 菜单里第 2 个选项；或命令行：
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\CadMath-Setup.ps1 -Install dummy -Mode appplugins -Yes
+```
+
+两种方式都存在时**只会同时加载两份插件**（一次按键被处理两遍），所以工具默认用"按版本注册"，并且会把旧的 `ApplicationPlugins` 安装识别为"旧式安装"、建议移到备份再继续。
+
 手动安装仍然可行（等于 0.4.0 的做法）：关闭 AutoCAD → 把 `dist\CadMath03.bundle` 复制到
-`%APPDATA%\Autodesk\ApplicationPlugins\CadMath03.bundle` → 启动。注意这样装的是"全局"的一份，所有 CAD 版本共享，安装器会把它识别为旧式安装。
+`%APPDATA%\Autodesk\ApplicationPlugins\CadMath03.bundle` → 启动。
 
 装好后 AutoCAD 命令行会出现：
 

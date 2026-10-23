@@ -318,6 +318,37 @@ try {
         $none = ConvertTo-ItemArray -Value $null
         $converted.Count -eq 2 -and $single.Count -eq 1 -and $none.Count -eq 0 -and $converted[1].A -eq 2
     }
+    Check 'ApplicationPlugins 模式装到指定目录、不写注册表' {
+        $gApps = Join-Path $root 'global-apps'
+        $gState = Join-Path $root 'global-state'
+        $out = & $powershell -NoProfile -ExecutionPolicy Bypass -File $entry -Install 'dummy' -Mode appplugins -Yes `
+            -SetupJson $SetupJson -FromBundle $BundleDir -StateRoot $gState `
+            -RegistryRoot $regRoot -MachineRegistryRoot $machineRoot -AppsRoot $gApps 2>&1 | Out-String
+        $code = $LASTEXITCODE
+        $manifest = Join-Path $gApps 'CadMath03.bundle\PackageContents.xml'
+        $stateFile = Join-Path $gState 'state.json'
+        $ok = $false
+        if ($code -eq 0 -and (Test-Path -LiteralPath $manifest) -and (Test-Path -LiteralPath $stateFile)) {
+            $st = Get-Content -LiteralPath $stateFile -Raw | ConvertFrom-Json
+            $registered = Test-Path -LiteralPath (Get-RegistrationKey -ProductPath $instance24.ProductPath)
+            $ok = ($st.mode -eq 'appplugins') -and ($st.installedVersion -eq $setup.releaseVersion) -and (-not $registered)
+        }
+        if (-not $ok) {
+            $dump = Join-Path $env:TEMP 'cm-global-fail.log'
+            [IO.File]::WriteAllText($dump, $out, (New-Object Text.UTF8Encoding($true)))
+            throw ('退出码 {0}；完整输出见 {1}' -f $code, $dump)
+        }
+        $ok
+    }
+    Check 'ApplicationPlugins 模式卸载会移除目录并重置状态' {
+        $gApps = Join-Path $root 'global-apps'
+        $gState = Join-Path $root 'global-state'
+        $out = & $powershell -NoProfile -ExecutionPolicy Bypass -File $entry -Remove 'dummy' -Yes `
+            -StateRoot $gState -RegistryRoot $regRoot -MachineRegistryRoot $machineRoot -AppsRoot $gApps 2>&1 | Out-String
+        $code = $LASTEXITCODE
+        $st = Get-Content -LiteralPath (Join-Path $gState 'state.json') -Raw | ConvertFrom-Json
+        $code -eq 0 -and -not (Test-Path -LiteralPath (Join-Path $gApps 'CadMath03.bundle')) -and $null -eq $st.installedVersion
+    }
     Check '启动批处理是 CRLF 且纯 ASCII（否则 cmd.exe 会解析错乱闪退）' {
         $launchers = @(
             (Join-Path $PSScriptRoot '..\CadMath-Setup.cmd'),

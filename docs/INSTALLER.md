@@ -29,7 +29,19 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\CadMath-Setup.ps
 
 ## 安装到哪里
 
-0.4.1 不再往 `%APPDATA%\Autodesk\ApplicationPlugins` 放东西，而是**按 CAD 版本注册**，每个实例可以独立安装、独立卸载：
+工具有两种安装方式，菜单里会问，命令行用 `-Mode` 指定：
+
+| 方式 | 值 | 装到哪 | 特点 |
+| --- | --- | --- | --- |
+| 按 CAD 版本注册（默认） | `registration` | `%LOCALAPPDATA%\CadMathInlineMath\payload\<版本>` + 注册表 | 每个 CAD 实例独立安装、独立卸载，不动 `ApplicationPlugins` |
+| 全局自动加载 | `appplugins` | `%APPDATA%\Autodesk\ApplicationPlugins\CadMath03.bundle` | 所有 CAD 版本共享一份，Autodesk 启动时自动扫描加载 |
+
+两种方式**不要同时用**（同一份插件被加载两次会让一次按键被处理两遍）。当前用的是哪种写在
+`%LOCALAPPDATA%\CadMathInlineMath\state.json` 的 `mode` 字段里，菜单 3（卸载）与 `Show-Detection` 都按它分派。
+
+### 方式一：按 CAD 版本注册（默认）
+
+每个实例独立安装、独立卸载：
 
 ```
 %LOCALAPPDATA%\CadMathInlineMath\
@@ -55,6 +67,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\CadMath-Setup.ps
    `...\Contents\Win64` 与 `...\Contents\Win64\Adapters`。
 
 这两个值都按「自己写入的自己摘掉」处理：卸载时只精确删除这两条路径，不整段清空 `TRUSTEDPATHS`。
+
+### 方式二：全局自动加载（ `-Mode appplugins` ）
+
+把整份 bundle 放到 `%APPDATA%\Autodesk\ApplicationPlugins\CadMath03.bundle`，由 Autodesk 启动时自动扫描加载——这就是 0.3.x 与 0.4.0 手工安装的做法：
+
+- 不需要写注册表，也不需要按实例选择；
+- 所有 CAD 版本共享同一份，卸载即全部失效；
+- 装之前如果该目录已有旧版本，会先移到 `%LOCALAPPDATA%\CadMathInlineMath\backups\appplugins-<时间戳>\`（只移动不删除）；
+- 卸载同样走菜单 3，工具读 `state.json` 的 `mode` 自动分派，把目录移到 `backups\appplugins-<时间戳>\` 并复位状态。
 
 ---
 
@@ -124,12 +145,15 @@ CadMath-Setup.ps1 -Doctor
 CadMath-Setup.ps1 -Install "R25.1\ACAD-9101:804" -Yes
 CadMath-Setup.ps1 -Remove "R25.1\ACAD-9101:804" -Yes
 
+# 换成全局自动加载方式（ApplicationPlugins，不需要实例 Id）
+CadMath-Setup.ps1 -Install dummy -Mode appplugins -Yes
+
 # 离线包（zip 或解压后的 bundle 目录）
 CadMath-Setup.ps1 -Install <实例> -FromZip D:\pkg\CadMath-InlineMath-0.4.1.zip -Yes
 CadMath-Setup.ps1 -Install <实例> -FromBundle D:\pkg\CadMath03.bundle -Yes
 ```
 
-其他开关：`-StateRoot`（换状态目录，测试用）、`-SetupJson`、`-NoNetwork`、`-Quiet`、`-RegistryRoot` / `-MachineRegistryRoot` / `-AppsRoot`（测试用的假根）。
+其他开关：`-Mode registration|appplugins`（默认 `registration`）、`-StateRoot`（换状态目录，测试用）、`-RemoveLegacyBundle`（自动把旧式 ApplicationPlugins 安装移到备份）、`-SetupJson`、`-NoNetwork`、`-Quiet`、`-RegistryRoot` / `-MachineRegistryRoot` / `-AppsRoot`（测试用的假根）。
 
 交互模式下还有一段「选择目标实例」，支持 `1,3` 多选、`a` 全选、回车全部。
 
@@ -163,9 +187,11 @@ CadMath-Setup.ps1 -Install <实例> -FromBundle D:\pkg\CadMath03.bundle -Yes
 
 ---
 
-## 为什么不用 `ApplicationPlugins` 自动加载
+## 为什么默认不用 `ApplicationPlugins` 自动加载
 
 `%APPDATA%\Autodesk\ApplicationPlugins\*.bundle` 是"所有 CAD 版本共享"的：删掉它，2025 和 2026 会一起失去插件；想只给 2026 更新也不可能。按版本注册才能做到"每个实例独立安装/更新/卸载"，而且**全程不需要管理员**（Autodesk 从 2022 起支持当前用户下的 `HKCU` 注册）。
+
+如果你更习惯"装一次全局生效"，工具也支持 `-Mode appplugins`（见上文"安装到哪里"）：它就是把同一份 bundle 放到那个共享目录，由 Autodesk 自动扫描加载。两条路的卸载都可用菜单 3，工具按 `state.json` 里的 `mode` 自动分派。
 
 ---
 
@@ -173,10 +199,10 @@ CadMath-Setup.ps1 -Install <实例> -FromBundle D:\pkg\CadMath03.bundle -Yes
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\tests\Test-Setup.ps1
-# 通过 25 项，失败 0 项
+# 通过 28 项，失败 0 项
 ```
 
-测试用临时 `-StateRoot` 与假注册表根（`HKCU:\Software\CadMathSetupTest\<guid>`），不会动真实安装；覆盖清单校验、适配器匹配的每个拒绝原因、zip 越界、安装/修复/卸载、`TRUSTEDPATHS` 合并与还原、事务回滚、崩溃后恢复、版本比较、CAD 运行时拒绝安装，以及启动批处理的行尾检查。
+测试用临时 `-StateRoot` 与假注册表根（`HKCU:\Software\CadMathSetupTest\<guid>`），不会动真实安装；覆盖清单校验、适配器匹配的每个拒绝原因、zip 越界、安装/修复/卸载、`TRUSTEDPATHS` 合并与还原、事务回滚、崩溃后恢复、版本比较、两种安装方式（按版本注册与 ApplicationPlugins 全局）、CAD 运行时拒绝安装，以及启动批处理的行尾检查。
 
 ## 构建注意：批处理必须是 CRLF
 

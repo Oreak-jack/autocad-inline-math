@@ -10,10 +10,26 @@ function Get-BackupRoot { param([string]$StateRoot) return (Join-Path $StateRoot
 function Read-InstallState {
     param([string]$StateRoot)
     $path = Get-StateFile -StateRoot $StateRoot
-    if (-not (Test-Path -LiteralPath $path)) {
-        return [pscustomobject]@{ schemaVersion = 1; installedVersion = $null; payloadPath = $null; instances = @() }
+    $state = $null
+    if (Test-Path -LiteralPath $path) {
+        $state = Read-JsonFile -Path $path
     }
-    return (Read-JsonFile -Path $path)
+    if ($state -eq $null) {
+        $state = [pscustomobject]@{ schemaVersion = 1; installedVersion = $null; payloadPath = $null; instances = @() }
+    }
+    # 旧版 state.json 没有 mode/bundlePath，补齐后再用，否则 StrictMode 下访问会抛"属性不存在"。
+    $names = @($state.PSObject.Properties.Name)
+    if ($names -notcontains 'mode') {
+        $state | Add-Member -MemberType NoteProperty -Name mode -Value 'registration'
+    }
+    if ($names -notcontains 'bundlePath') {
+        $state | Add-Member -MemberType NoteProperty -Name bundlePath -Value $null
+    }
+    if ($names -notcontains 'instances') {
+        $state | Add-Member -MemberType NoteProperty -Name instances -Value @()
+    }
+    if ($state.mode -ne 'appplugins') { $state.mode = 'registration' }
+    return $state
 }
 
 function Save-InstallState {
@@ -442,10 +458,134 @@ function Uninstall-CadMathInstances {
     }
     $newState = [pscustomobject]@{
         schemaVersion    = 1
+        mode             = 'registration'
         installedVersion = $(if ($remaining.Count -eq 0) { $null } else { $state.installedVersion })
         payloadPath      = $(if ($remaining.Count -eq 0) { $null } else { $payload })
+        bundlePath       = $null
         instances        = $remaining.ToArray()
     }
     Save-InstallState -StateRoot $StateRoot -State $newState
     return [pscustomobject]@{ Success = $allOk; Results = $results.ToArray(); RemainingInstances = $remaining.Count }
+}
+
+# ---------------------------------------------------------------- 全局模式（ApplicationPlugins）
+# 另一种合法装法：把整个 bundle 放进 %APPDATA%\Autodesk\ApplicationPlugins，
+# 由 AutoCAD 自己扫描加载。所有 CAD 版本共享同一份，不能按实例卸载 —— 换来的是
+# 注册表零改动，跟 0.3.x 的老做法完全一致。
+
+function Get-GlobalBundlePath {
+    param([string]$AppsRoot)
+    $root = $AppsRoot
+    if ([string]::IsNullOrWhiteSpace($root)) { $root = Get-ApplicationsRoot }
+    return (Join-Path $root 'CadMath03.bundle')
+}
+
+function Install-CadMathGlobalBundle {
+    param(
+        [Parameter(Mandatory)]$Setup,
+        [Parameter(Mandatory)][string]$SourcePath,
+        [Parameter(Mandatory)][string]$StateRoot,
+        [string]$AppsRoot,
+        [string]$ZipSha256
+    )
+    Assert-CadClosed
+    $txid = [guid]::NewGuid().ToString('N')
+    $work = Join-Path $StateRoot (Join-Path 'downloads' $txid)
+    New-Item -ItemType Directory -Path $work -Force | Out-Null
+    try {
+        # 1. 解析负载来源（目录或 zip）并校验完整性
+        $bundleRoot = $SourcePath
+        if ($SourcePath -like '*.zip') {
+            $expectedZip = $ZipSha256
+            if (-not $expectedZip -and $Setup.zip -and $Setup.zip.PSObject.Properties['sha256']) {
+                $expectedZip = [string]$Setup.zip.sha256
+            }
+            if ($expectedZip) {
+                Write-Info -Stage 'VERIFY' ('校验安装包 SHA-256：{0}' -f (Split-Path $SourcePath -Leaf))
+                $null = Test-FileSha256 -Path $SourcePath -Expected $expectedZip
+                Write-Info -Stage 'VERIFY' '安装包 SHA-256 校验通过'
+            }
+            Write-Info -Stage 'EXTRACT' ('解压安装包：{0}' -f (Split-Path $SourcePath -Leaf))
+            $bundleRoot = Resolve-BundleFromArchive -Zip $SourcePath -WorkRoot $work
+        }
+        $info = Get-BundleInfo -Bundle $bundleRoot
+        if ($info.Version -ne [string]$Setup.releaseVersion) {
+            throw ('安装包版本是 {0}，清单要求 {1}。' -f $info.Version, $Setup.releaseVersion)
+        }
+        $null = Test-BundleFiles -BundleRoot $bundleRoot -Files $Setup.files
+        Write-Info -Stage 'VERIFY' ('包校验通过：{0} {1}' -f $info.Name, $info.Version)
+
+        $target = Get-GlobalBundlePath -AppsRoot $AppsRoot
+        $parent = Split-Path -Parent $target
+        $backupPath = $null
+        if (Test-Path -LiteralPath $target) {
+            $backup = Join-Path (Get-BackupRoot -StateRoot $StateRoot) ('appplugins-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+            New-Item -ItemType Directory -Path $backup -Force | Out-Null
+            Move-Item -LiteralPath $target -Destination (Join-Path $backup 'CadMath03.bundle')
+            $backupPath = $backup
+            Write-Info -Stage 'BACKUP' ('旧 bundle 已移到：{0}' -f $backup)
+        }
+        New-Item -ItemType Directory -Path $parent -Force | Out-Null
+        Copy-Item -LiteralPath $bundleRoot -Destination $target -Recurse -Force
+        if (-not (Test-Path -LiteralPath (Join-Path $target 'PackageContents.xml'))) {
+            throw ('复制后的目录里没有 PackageContents.xml：{0}' -f $target)
+        }
+        $state = [pscustomobject]@{
+            schemaVersion    = 1
+            mode             = 'appplugins'
+            installedVersion = $info.Version
+            payloadPath      = $null
+            bundlePath       = $target
+            instances        = @()
+        }
+        Save-InstallState -StateRoot $StateRoot -State $state
+        Write-Info -Stage 'DONE' ('已装到 ApplicationPlugins：{0}（版本 {1}，所有 CAD 版本共享）' -f $target, $info.Version)
+        return [pscustomobject]@{ Success = $true; Version = $info.Version; Path = $target; BackupPath = $backupPath }
+    } catch {
+        Write-Err -Stage 'INSTALL' $_.Exception.Message
+        return [pscustomobject]@{ Success = $false; Error = $_.Exception.Message; Path = (Get-GlobalBundlePath -AppsRoot $AppsRoot) }
+    } finally {
+        if (Test-Path -LiteralPath $work) { Remove-Item -LiteralPath $work -Recurse -Force -ErrorAction SilentlyContinue }
+    }
+}
+
+function Uninstall-CadMathGlobalBundle {
+    param(
+        [Parameter(Mandatory)][string]$StateRoot,
+        [string]$AppsRoot,
+        $Instances
+    )
+    $target = Get-GlobalBundlePath -AppsRoot $AppsRoot
+    $owned = @(Get-RemovableDirectories -PayloadDir $target)
+    $cleaned = New-Object System.Collections.Generic.List[string]
+    foreach ($instance in (ConvertTo-ItemArray -Value $Instances)) {
+        try {
+            $null = Remove-InstanceRegistration -Instance $instance -OwnedDirs $owned
+            $cleaned.Add($instance.Label)
+        } catch {
+            Write-Warn -Stage 'UNINSTALL' ('{0}：清理 TRUSTEDPATHS 失败 {1}' -f $instance.Label, $_.Exception.Message)
+        }
+    }
+    $backupPath = $null
+    if (Test-Path -LiteralPath $target) {
+        $backup = Join-Path (Get-BackupRoot -StateRoot $StateRoot) ('appplugins-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+        New-Item -ItemType Directory -Path $backup -Force | Out-Null
+        Move-Item -LiteralPath $target -Destination (Join-Path $backup 'CadMath03.bundle')
+        $backupPath = $backup
+    }
+    $empty = [pscustomobject]@{
+        schemaVersion    = 1
+        mode             = 'registration'
+        installedVersion = $null
+        payloadPath      = $null
+        bundlePath       = $null
+        instances        = @()
+    }
+    Save-InstallState -StateRoot $StateRoot -State $empty
+    if ($backupPath) {
+        Write-Info -Stage 'UNINSTALL' ('已移除 ApplicationPlugins 里的插件，备份在：{0}' -f $backupPath)
+    } else {
+        Write-Info -Stage 'UNINSTALL' 'ApplicationPlugins 里没有找到 CadMath03.bundle，未删除任何插件文件。'
+    }
+    return [pscustomobject]@{ Success = $true; Removed = ($backupPath -ne $null); BackupPath = $backupPath; Cleaned = $cleaned.ToArray() }
 }

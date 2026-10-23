@@ -6,6 +6,8 @@ param(
     [string]$RegistryRoot = 'HKCU:\Software\Autodesk\AutoCAD',
     [string]$MachineRegistryRoot = 'HKLM:\SOFTWARE\Autodesk\AutoCAD',
     [string]$AppsRoot,
+    [ValidateSet('registration', 'appplugins')]
+    [string]$Mode = 'registration',
     [string]$FromZip,
     [string]$FromBundle,
     [string]$SetupJson,
@@ -26,6 +28,8 @@ $ErrorActionPreference = 'Stop'
 $ToolVersion = '0.4.1'
 $toolRoot = Split-Path $PSScriptRoot -Parent
 $toolRoot = Split-Path $toolRoot -Parent
+# 用户有没有显式指定安装方式：没指定时，交互模式会问一次，默认按版本注册。
+$ModeExplicit = $PSBoundParameters.ContainsKey('Mode')
 
 . (Join-Path $PSScriptRoot 'lib\Common.ps1')
 . (Join-Path $PSScriptRoot 'lib\Logging.ps1')
@@ -87,7 +91,12 @@ function Show-Detection {
     Write-Host ('  AutoCAD 实例：检测完成，共发现 {0} 个' -f @($Scan.Instances).Count)
     $state = Read-InstallState -StateRoot $StateRoot
     if ($state.installedVersion) {
-        Write-Host ('  本工具安装状态：已安装 v{0}（{1} 个实例受管）' -f $state.installedVersion, @($state.instances).Count)
+        $modeText = '按版本注册'
+        if ($state.mode -eq 'appplugins') { $modeText = 'ApplicationPlugins（全局）' }
+        Write-Host ('  本工具安装状态：已安装 v{0}（{1}，{2} 个实例受管）' -f $state.installedVersion, $modeText, @($state.instances).Count)
+        if ($state.mode -eq 'appplugins' -and $state.bundlePath) {
+            Write-Host ('    安装位置：{0}' -f $state.bundlePath)
+        }
     } else {
         Write-Host '  本工具安装状态：未安装'
     }
@@ -239,8 +248,94 @@ function Resolve-LegacyBundle {
     return $true
 }
 
+function Select-InstallMode {
+    Write-Host ''
+    Write-Host '[安装方式]' -ForegroundColor White
+    Write-Host '  1. 按版本注册（推荐）：每个 AutoCAD 版本单独注册，可单独卸载，不动 AutoCAD 全局设置。'
+    Write-Host '  2. ApplicationPlugins：复制到 %APPDATA%\Autodesk\ApplicationPlugins，所有版本共享一份，'
+    Write-Host '     和以前的手工安装方式一致；卸载时整体移除，无法只卸某一个版本。'
+    while ($true) {
+        Write-Host ''
+        Write-Host '请选择安装方式 [1-2]（直接回车＝1）：' -ForegroundColor Cyan -NoNewline
+        $answer = Read-Host
+        if ($null -eq $answer) { continue }
+        $trimmed = $answer.Trim()
+        if ($trimmed -eq '' -or $trimmed -eq '1') { return 'registration' }
+        if ($trimmed -eq '2') { return 'appplugins' }
+        Write-Warn -Stage 'MENU' ('输入无效：“{0}”，只接受 1 或 2。' -f $trimmed)
+    }
+}
+
+function Invoke-InstallGlobalFlow {
+    param($Scan, $Package)
+    if ($Package.Setup -eq $null -or $Package.Bundle -eq $null) {
+        Write-Err -Stage 'INSTALL' '找不到本地安装包（setup.json / CadMath03.bundle）。'
+        return
+    }
+    if (-not (Resolve-LegacyBundle -Scan $Scan)) { return }
+    $usable = New-Object System.Collections.Generic.List[object]
+    foreach ($instance in @($Scan.Instances)) {
+        $state = Get-InstancePackageState -Instance $instance -Setup $Package.Setup -Architecture $Scan.Architecture
+        if ($state.Matched -ne $null) { $usable.Add($instance) }
+    }
+    if ($usable.Count -eq 0) {
+        Write-Err -Stage 'INSTALL' '没有任何实例拥有可用适配器，已停止，未修改任何文件。'
+        return
+    }
+    $target = Get-GlobalBundlePath
+    Write-Host ''
+    Write-Host '[安装计划]' -ForegroundColor White
+    Write-Host ('  方式：ApplicationPlugins（全局，{0} 个版本共享）' -f $usable.Count)
+    Write-Host ('  安装到：{0}' -f $target)
+    Write-Host ('  版本：v{0}' -f $Package.Setup.releaseVersion)
+    Write-Host ('  可用实例：{0}' -f (($usable | ForEach-Object { $_.Label }) -join '、'))
+    Write-Host '  注册表：不改动（Autodesk 自动扫描该目录）'
+    Write-Host '  已有同名目录时会先移到备份目录。'
+    if (-not (Confirm-Action -Question '确认按上面的计划安装？')) {
+        Write-Info -Stage 'INSTALL' '用户取消，未修改任何文件。'
+        return
+    }
+    $result = Install-CadMathGlobalBundle -Setup $Package.Setup -SourcePath $Package.Bundle -StateRoot $StateRoot -AppsRoot $AppsRoot
+    Write-Host ''
+    if ($result.Success) {
+        Write-Host ('安装成功：v{0} → {1}' -f $result.Version, $result.Path) -ForegroundColor Green
+        if ($result.BackupPath) { Write-Host ('旧目录已备份：{0}' -f $result.BackupPath) }
+        Write-Host '请重启 AutoCAD，在命令行输入 CM3STATUS 确认。' -ForegroundColor Yellow
+    } else {
+        Write-Host ('安装失败：{0}' -f $result.Error) -ForegroundColor Red
+    }
+}
+
+function Invoke-UninstallGlobalFlow {
+    param($Scan)
+    $target = Get-GlobalBundlePath
+    $state = Read-InstallState -StateRoot $StateRoot
+    Write-Host ''
+    Write-Host '[将删除的内容]' -ForegroundColor White
+    Write-Host ('  - 目录：{0}' -f $target)
+    Write-Host ('  - 版本：v{0}' -f $state.installedVersion)
+    Write-Host '  - 注册表：不改动；只清理本插件加入的 TRUSTEDPATHS 条目'
+    Write-Host '  保留：日志、备份、用户图纸与其它插件。'
+    if (-not (Test-Path -LiteralPath $target)) {
+        Write-Warn -Stage 'UNINSTALL' ('目录不存在：{0}，可能已经卸载过。' -f $target)
+    }
+    if (-not (Confirm-Action -Question '确认卸载？')) {
+        Write-Info -Stage 'UNINSTALL' '用户取消，未修改任何文件。'
+        return
+    }
+    $result = Uninstall-CadMathGlobalBundle -StateRoot $StateRoot -AppsRoot $AppsRoot -Instances @($Scan.Instances)
+    Write-Host ''
+    if ($result.BackupPath) { Write-Host ('已移到备份：{0}' -f $result.BackupPath) -ForegroundColor Green }
+    Write-Host '卸载完成。' -ForegroundColor Green
+}
+
+
 function Invoke-InstallFlow {
     param($Scan, $Package)
+    # 安装方式：显式参数优先；交互模式没指定时问一次，默认按版本注册。
+    $mode = $Mode
+    if (-not $ModeExplicit -and -not $Yes -and -not $Quiet) { $mode = Select-InstallMode }
+    if ($mode -eq 'appplugins') { Invoke-InstallGlobalFlow -Scan $Scan -Package $Package; return }
     $instances = @($Scan.Instances)
     if ($instances.Count -eq 0) {
         Write-Err -Stage 'INSTALL' '没有检测到 AutoCAD 实例，无法安装。'
@@ -378,6 +473,8 @@ function Invoke-UpdateFlow {
 
 function Invoke-UninstallFlow {
     param($Scan)
+    $installed = Read-InstallState -StateRoot $StateRoot
+    if ($installed.mode -eq 'appplugins') { Invoke-UninstallGlobalFlow -Scan $Scan; return }
     $managed = New-Object System.Collections.Generic.List[object]
     foreach ($instance in @($Scan.Instances)) {
         if ($instance.PluginState -eq 'registry' -or $instance.PluginState -eq 'both') { $managed.Add($instance) }
@@ -476,6 +573,8 @@ function Get-Summary {
         Architecture     = $Scan.Architecture
         CadInstances     = @($Scan.Instances | ForEach-Object { [pscustomobject]@{ id = $_.Id; label = $_.Label; release = $_.Release; build = $_.Build; buildKnown = $_.BuildKnown; pluginState = $_.PluginState; pluginVersion = $_.PluginVersion; location = $_.AcadLocation } })
         InstalledVersion = $state.installedVersion
+        InstalledMode    = $state.mode
+        InstalledPath    = $(if ($state.mode -eq 'appplugins') { $state.bundlePath } else { $state.payloadPath })
         InstalledCount   = @($state.instances).Count
         LegacyBundle     = $Scan.LegacyBundle
         LogPath          = (Get-LogPath)
@@ -514,6 +613,14 @@ if ($Check) {
     exit 0
 }
 if ($Install) {
+    $didAction = $true
+    if ($package.Setup -eq $null -or $package.Bundle -eq $null) { Write-Err -Stage 'INSTALL' '找不到本地安装包（setup.json / CadMath03.bundle）。'; exit 3 }
+    if ($Mode -eq 'appplugins') {
+        if (-not (Resolve-LegacyBundle -Scan $scan)) { exit 3 }
+        $global = Install-CadMathGlobalBundle -Setup $package.Setup -SourcePath $package.Bundle -StateRoot $StateRoot -AppsRoot $AppsRoot
+        if ($global.Success) { Write-Info -Stage 'EXIT' ('安装成功 v{0}（ApplicationPlugins）' -f $global.Version); exit 0 }
+        Write-Err -Stage 'EXIT' ('安装失败：{0}' -f $global.Error); exit 3
+    }
     $ids = $Install.Split(',')
     $targets = New-Object System.Collections.Generic.List[object]
     foreach ($id in $ids) {
@@ -522,7 +629,6 @@ if ($Install) {
         $targets.Add($found[0])
     }
     $didAction = $true
-    if ($package.Setup -eq $null -or $package.Bundle -eq $null) { Write-Err -Stage 'INSTALL' '找不到本地安装包（setup.json / CadMath03.bundle）。'; exit 3 }
     if (-not (Resolve-LegacyBundle -Scan $scan)) { exit 3 }
     $plan = New-Object System.Collections.Generic.List[object]
     foreach ($instance in $targets) {
@@ -535,6 +641,12 @@ if ($Install) {
     Write-Err -Stage 'EXIT' ('安装失败：{0}' -f $result.Error); exit 3
 }
 if ($Remove) {
+    $installedState = Read-InstallState -StateRoot $StateRoot
+    if ($installedState.mode -eq 'appplugins') {
+        $global = Uninstall-CadMathGlobalBundle -StateRoot $StateRoot -AppsRoot $AppsRoot -Instances @($scan.Instances)
+        Write-Info -Stage 'EXIT' ('卸载完成（ApplicationPlugins，备份：{0}）' -f $global.BackupPath)
+        exit 0
+    }
     $ids = $Remove.Split(',')
     $targets = New-Object System.Collections.Generic.List[object]
     foreach ($id in $ids) {
