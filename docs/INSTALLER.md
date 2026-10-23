@@ -241,16 +241,16 @@ CadMath03-2024.bundle/                  2024 专用（ApplicationPlugins 全局�
 
 状态文件 `state.json` 的每个实例多记一个 `entry` 字段，卸载和诊断时可以据此知道当时装的是哪一代。
 
-### 实验包（2024 验证用）
+### 实验包（验证尚未开放的版本）
 
-正式包里 `legacy-r24` 的 `status` 是 `planned`，安装器会以 `status-planned` 拒绝该实例。
-给测试者验的是实验包：
+0.4.3 起 `legacy-r24`（AutoCAD 2024）的状态是 `host-tested`，正式包直接支持它。
+实验包机制保留下来，供以后接入更老的版本（2023 及以前）或在新版本上先做小范围验证：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File build\build.ps1 -Experimental
-# → dist/CadMath-InlineMath-0.4.2-experimental-2024.zip（legacy-r24 的状态被提升为 built）
+# → dist/CadMath-InlineMath-<版本>-experimental-2024.zip（所有 planned 适配器被提升为 built）
 ```
 
-测试者装好后跑 `CM3PROBE`，输出里 `host=` `clr=` `adapter=` `binding=` 与焦点类型齐全；把那段连同
-`%TEMP%\CadMath03.log` 发回来即可判定。验证通过后把 `adapters/adapters.json` 里 `legacy-r24` 的
-`status` 改成 `host-tested`，正式包随之开放。
+验证者装好后跑 `CM3PROBE`，输出里 `host=` `clr=` `adapter=` `binding=` 与焦点类型齐全；把那段连同
+`%TEMP%\CadMath03.log` 发回来即可判定。验证通过后把 `adapters/adapters.json` 里对应适配器的
+`status` 改成 `host-tested`，正式版随之开放。

@@ -160,7 +160,7 @@ PreTranslateMessage(msg)
 
 ## 6. 遗留
 
-- **R24 适配器**：`legacy-r24` 已占位（清单、装载、失败提示全通），实现需要 24.x 的 `acmgd` 引用程序集；输入管线在 2024 上差异较大，不能靠改版本号复用。清单里标 `planned`，安装器会跳过而不是装一个跑不起来的适配器。
+- **R24 适配器**：`legacy-r24` 在 0.4.2 落地为真实实现（`KeystrokeAdapter` 共享源码 + `AutoCAD.NET 24.3.0`），0.4.3 在真实 AutoCAD 2024 上验证通过，状态为 `host-tested`。它需要 net48 宿主与单独的入口目录（`Contents/Win64-2024`），不能靠改版本号复用。
 - **面板输入**：目前只认底部命令行。要支持浮动命令行，需要识别 `Autodesk.AutoCAD.Windows.Palette` 里的编辑框，属于新适配器能力，不是 Shell 的事。
 - **去重策略的边界**：依赖 `WM_KEYDOWN` 先于 `WM_CHAR` 到达。若某个版本顺序不同，`_consumedKeyDownKey` 不会命中，表现为重复改写——日志里成对的 `replacement_requested` 就是信号，应优先查这里。
 - **构建区间匹配**：`setup.json` 的 `buildRange` 留空，只按版本系列匹配；等有实测可用区间再填，填了就比 `planned` 更严格。
@@ -198,7 +198,7 @@ PreTranslateMessage(msg)
 | 项目 | 做法 | 结果 |
 | --- | --- | --- |
 | 清单 | `Read-SetupManifest dist\setup.json` | 8 个文件、`modern-r25=host-tested`、`legacy-r24=planned` |
-| 匹配 | 假实例 2024 / 2026 | 2024 → `series-mismatch` + `status-planned`；2026 → `modern-r25` |
+| 匹配 | 假实例 2024 / 2026 | 2024 → `legacy-r24`（`host-tested`）；2026 → `modern-r25`；未开放的版本仍以 `status-planned` 拒绝 |
 | 安装 | 隔离状态根 + 假注册表，`-Install <实例> -Yes` | 退出码 0，注册项/负载/`state.json`/`TRUSTEDPATHS` 全部正确 |
 | 幂等 | 重复安装同一版本 | 视为修复，退出码 0 |
 | 回滚 | `CADMATH_SETUP_INJECT_FAILURE=register` | 退出码 3，日志 `已恢复安装前的注册表与负载状态`，旧安装完好、`pending.json` 不存在 |

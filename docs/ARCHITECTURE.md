@@ -252,8 +252,10 @@ AutoCAD 2024 是 .NET Framework 4.7/4.8，2025/2026 是 .NET 8。一个插件 DL
 
 ### 代价与边界
 
-- 2024 的 API 兼容性是**编译期结论**：`UIBindings.CommandEditorManager.ActiveEditor.PromptAndInput.InputBuffer`、
-  `ReplaceInputQueue`、`OnSetSelectedTextQueue`、`ViewModel.CommandLine.CommandLineTextBox` 在 24.3 上都能编译通过，
-  但运行期行为（焦点判定、输入队列刷新时机）仍需真机验证，所以适配器状态停在 `planned`。
+- 2024 的兼容性先由**编译期**确认：`UIBindings.CommandEditorManager.ActiveEditor.PromptAndInput.InputBuffer`、
+  `ReplaceInputQueue`、`OnSetSelectedTextQueue`、`ViewModel.CommandLine.CommandLineTextBox` 在 24.3 上都编译通过；
+  运行期行为（焦点判定、输入队列刷新时机）已于 0.4.3 在真实 AutoCAD 2024 上验证，`legacy-r24` 状态为 `host-tested`。
 - 打包体积翻倍（两个宿主各自带一份 Core/Abstractions）。换取的是"一个 zip 通吃 2024–2026"，
   以及 2024 上不需要用户另装 .NET 8 运行时。
+- 共享源码是**编译期复用**而不是运行期复用：`KeystrokeAdapter.cs` 被两个适配器工程各编译一次，
+  若某一代 API 发生签名变化，编译会立刻断，而不是运行时才炸。
