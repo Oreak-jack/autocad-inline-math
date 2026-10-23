@@ -180,8 +180,9 @@ function Install-CadMathPackage {
         $bundleSource = $SourcePath
         if ($SourcePath -like '*.zip') {
             $expectedZip = $ZipSha256
-            if (-not $expectedZip -and $Setup.zip -and $Setup.zip.PSObject.Properties['sha256']) {
-                $expectedZip = [string]$Setup.zip.sha256
+            $zipField = Get-SetupField -Setup $Setup -Name 'zip'
+            if (-not $expectedZip -and $zipField) {
+                $expectedZip = [string](Get-SetupField -Setup $zipField -Name 'sha256')
             }
             if ($expectedZip) {
                 Write-Info -Stage 'VERIFY' ('校验安装包 SHA-256：{0}' -f (Split-Path $SourcePath -Leaf))
@@ -551,8 +552,9 @@ function Install-CadMathGlobalBundle {
         $bundleRoot = $SourcePath
         if ($SourcePath -like '*.zip') {
             $expectedZip = $ZipSha256
-            if (-not $expectedZip -and $Setup.zip -and $Setup.zip.PSObject.Properties['sha256']) {
-                $expectedZip = [string]$Setup.zip.sha256
+            $zipField = Get-SetupField -Setup $Setup -Name 'zip'
+            if (-not $expectedZip -and $zipField) {
+                $expectedZip = [string](Get-SetupField -Setup $zipField -Name 'sha256')
             }
             if ($expectedZip) {
                 Write-Info -Stage 'VERIFY' ('校验安装包 SHA-256：{0}' -f (Split-Path $SourcePath -Leaf))

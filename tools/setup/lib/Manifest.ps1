@@ -6,6 +6,15 @@ $script:AllStatuses = @('planned', 'built', 'automated-tested', 'host-tested', '
 $script:InstallableStatuses = @('built', 'automated-tested', 'host-tested', 'released')
 $script:HostRuntimes = @('net8.0-windows', 'net48')
 
+function Get-SetupField {
+    # StrictMode 下访问不存在的属性会直接抛异常；清单是跨版本演进的，读可选字段一律走这里。
+    param($Setup, [string]$Name)
+    if ($null -eq $Setup) { return $null }
+    $property = $Setup.PSObject.Properties[$Name]
+    if ($null -eq $property) { return $null }
+    return $property.Value
+}
+
 function Read-SetupManifest {
     param([Parameter(Mandatory)][string]$Path)
     $doc = Read-JsonFile -Path $Path
@@ -15,8 +24,10 @@ function Read-SetupManifest {
     if ($doc.product -ne 'CadMath') { throw '发行清单的 product 不是 CadMath。' }
     if ([string]$doc.releaseVersion -notmatch '^\d+\.\d+\.\d+$') { throw '发行清单的 releaseVersion 不合法。' }
     # zip 段可选：正式发行由 release 资产名决定，清单里只保留逐文件哈希。
-    if ($doc.PSObject.Properties['zip'] -and $doc.zip -ne $null -and $doc.zip.name) {
-        if ([string]$doc.zip.sha256 -and [string]$doc.zip.sha256 -notmatch '^[0-9a-fA-F]{64}$') {
+    $zipField = Get-SetupField -Setup $doc -Name 'zip'
+    if ($zipField -and (Get-SetupField -Setup $zipField -Name 'name')) {
+        $zipSha = [string](Get-SetupField -Setup $zipField -Name 'sha256')
+        if ($zipSha -and $zipSha -notmatch '^[0-9a-fA-F]{64}$') {
             throw '发行清单的 zip.sha256 不合法。'
         }
     }

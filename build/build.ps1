@@ -227,6 +227,10 @@ foreach ($item in @(Get-ChildItem -LiteralPath $dist -Recurse -File -Filter * | 
 
 $supportedSeries = @($releaseAdapters | ForEach-Object { $_.cadSeries } | Sort-Object -Unique)
 
+# zip 段保留给旧版安装器读（0.4.2~0.4.4 的 StrictMode 会直接访问 $Setup.zip）；
+# 哈希留空，实际校验值在 SHA256SUMS.txt 与 Release 资产里，新版工具走逐文件校验。
+$zipName = if ($Experimental) { "CadMath-InlineMath-$version-experimental.zip" } else { "CadMath-InlineMath-$version.zip" }
+
 $setup = [ordered]@{
     schemaVersion   = 1
     product         = 'CadMath'
@@ -235,6 +239,7 @@ $setup = [ordered]@{
     toolVersion     = $version
     experimental    = [bool]$Experimental.IsPresent
     bundleName      = 'CadMath03.bundle'
+    zip             = [ordered]@{ name = $zipName; sha256 = $null }
     hosts           = $hosts
     supportedSeries = $supportedSeries
     adapters        = $releaseAdapters
@@ -254,7 +259,7 @@ Write-Host ''
 Get-ChildItem $dist -Recurse -File | Where-Object { $_.FullName -notmatch '\\tools\\' } | ForEach-Object { '  ' + $_.FullName.Substring($dist.Length + 1) }
 
 if (-not $NoZip) {
-    $name = if ($Experimental) { "CadMath-InlineMath-$version-experimental.zip" } else { "CadMath-InlineMath-$version.zip" }
+    $name = $zipName
     $zip = Join-Path $dist $name
     $items = @(
         $bundle,

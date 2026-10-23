@@ -448,6 +448,28 @@ try {
         }
         $ok -and $checked -ge 1
     }
+    Check '从 zip 安装：清单里没有 zip 字段也不崩（0.4.5 的更新失败）' {
+        # 复现 2024 机器上的报错：`$Setup.zip` 在 StrictMode 下直接抛"找不到属性"。
+        $stripped = Join-Path $root 'setup-nozip.json'
+        $doc = [IO.File]::ReadAllText($SetupJson, [Text.Encoding]::UTF8) | ConvertFrom-Json
+        if ($doc.PSObject.Properties['zip']) { $doc.PSObject.Properties.Remove('zip') }
+        [IO.File]::WriteAllText($stripped, ($doc | ConvertTo-Json -Depth 10), (New-Object Text.UTF8Encoding($false)))
+        if (-not $ZipPath -or -not (Test-Path -LiteralPath $ZipPath)) { return $false }
+        $zipState = Join-Path $root 'state-zip'
+        $cliArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $entry,
+            '-Install', 'R25.1\ACAD-9101:804', '-Yes', '-FromZip', $ZipPath,
+            '-SetupJson', $stripped, '-StateRoot', $zipState, '-RegistryRoot', $cli.RegistryRoot,
+            '-MachineRegistryRoot', $cli.MachineRegistryRoot, '-AppsRoot', $cli.AppsRoot)
+        $out = & $powershell @cliArgs 2>&1 | Out-String
+        $key = Get-RegistrationKey -ProductPath $instance25.ProductPath
+        if ($LASTEXITCODE -ne 0 -or $out -match '找不到属性') {
+            $dump = Join-Path $env:TEMP 'cm-zip-fail.log'
+            [IO.File]::WriteAllText($dump, $out, (New-Object Text.UTF8Encoding($true)))
+            throw ('退出码 {0}；完整输出见 {1}' -f $LASTEXITCODE, $dump)
+        }
+        $loader = (Get-ItemProperty -LiteralPath $key).LOADER
+        (Test-Path -LiteralPath $loader) -and $loader -like "*$zipState*"
+    }
     if (@(Get-CadProcess).Count -gt 0) {
         Check 'CAD 正在运行时拒绝安装（未进入测试模式）' {
             $env:CADMATH_SETUP_ALLOW_CAD_RUNNING = $null

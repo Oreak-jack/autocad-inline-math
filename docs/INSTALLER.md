@@ -1,4 +1,4 @@
-# 命令行安装器（`CadMath-Setup`）
+﻿# 命令行安装器（`CadMath-Setup`）
 
 0.4.1 起，安装、更新、卸载由一个纯命令行工具完成：`tools/setup/CadMath-Setup.ps1`，入口是 `CadMath-Setup.cmd`。
 它不写图形界面、启动时**不联网**（只有菜单 2 会请求 GitHub），只改当前用户的 `HKCU` 与 `%LOCALAPPDATA%`，不需要管理员权限。
@@ -99,6 +99,12 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\CadMath-Setup.ps
 ## 更新与回滚
 
 菜单 2 的执行顺序：请求 GitHub `releases/latest` → 校验 `setup.json` → 下载 zip → 逐文件 SHA-256 校验 → 复用安装流程。
+
+> **0.4.5 及更早的更新流程是坏的**：清单里没有 `zip` 段，而 StrictMode 下访问 `$Setup.zip` 会抛
+> "找不到属性 zip"，下载完就失败。0.4.6 起改为用 `Get-SetupField` 读可选字段，构建时也重新写入
+> `zip { name, sha256 }`（`sha256` 留空，真正的校验值在 `SHA256SUMS.txt`）。装着 0.4.5 或更早的机器，
+> 请用 zip 手动跑一次菜单 1；0.4.2 这类旧安装器还不认识多代宿主，更不能走它的菜单 2。
+
 
 安装/更新是一个事务：
 

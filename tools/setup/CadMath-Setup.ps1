@@ -133,6 +133,7 @@ function Get-LocalPackage {
     $bundle = $null
     $setup = $null
     if ($FromBundle) { $bundle = $FromBundle }
+    if ($FromZip) { $bundle = $FromZip }
     if ($SetupJson) { $setup = $SetupJson }
     foreach ($candidate in @($toolRoot, $PSScriptRoot, (Get-Location).Path)) {
         if (-not $bundle) {
