@@ -269,8 +269,10 @@ function Install-CadMathPackage {
         }
         $state = [pscustomobject]@{
             schemaVersion    = 1
+            mode             = 'registration'
             installedVersion = $Setup.releaseVersion
             payloadPath      = $payloadFinal
+            bundlePath       = $null
             instances        = $entries.ToArray()
         }
         Save-InstallState -StateRoot $StateRoot -State $state

@@ -28,7 +28,9 @@
 
 1. 关闭所有 AutoCAD（安装器也会检查，运行中会拒绝）。
 2. 解压 `CadMath-InlineMath-0.4.1.zip`。
-3. 双击 `CadMath-Setup.cmd`，按提示选「1. 安装插件」。
+3. 双击 `CadMath-Setup.cmd`，按提示选「1. 安装插件」，再选安装方式：
+   - **1 按版本注册**（默认，推荐）：每个 AutoCAD 版本独立安装、可单独卸载；
+   - **2 ApplicationPlugins**：复制到 `%APPDATA%\Autodesk\ApplicationPlugins\CadMath03.bundle`，所有版本共享一份，与旧的手工安装方式一致。
 
 也可以直接跑命令：
 
