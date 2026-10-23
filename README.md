@@ -21,7 +21,7 @@
 | 多版本 | 无 | `adapters.json` + 适配器注册/选择/装载 |
 | 分发 | 安装器 | 复制 `CadMath03.bundle` 到一个目录 |
 
-行为上两者逐条对齐：`tests/CadMath.Tests` 里 617 条用例（数学 541 + 路由 36 + 清单/选择 40）与 0.3.3 完全一致。
+行为上两者逐条对齐：`tests/CadMath.Tests` 里 617 条断言（数学 541 + 路由 45 + 宿主序列/清单/选择 31）与 0.3.3 完全一致。
 
 ---
 
@@ -160,8 +160,8 @@ dotnet run --project tests\CadMath.Tests -c Release
 ```
 
 - 数学 541 条：含 500 条 `seed=42` 随机表达式，与 0.3.3 逐条对拍（数值按 `0.################` 格式化后比较）。
-- 路由 36 条：哪些输入该 Pass / Replace / Reject。
-- 适配器 40 条：HostSeries 解析、清单校验、选择与排除原因。
+- 路由 45 条：哪些输入该 Pass / Replace / Reject，以及拒绝时的错误码。
+- 适配器 31 条：HostSeries 解析、清单校验（各错误码各一条）、选择排序与排除原因。
 
 测试工程零 NuGet 依赖，直接跑在 `net8.0` 上，CI 不需要 Windows 或 AutoCAD。
 真实 CAD 里的行为（拦截、改写、几何落地）不在自动化范围内，靠人工冒烟和 `%TEMP%\CadMath03.log` 核对。

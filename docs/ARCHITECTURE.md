@@ -7,19 +7,20 @@
 
 ```
         ┌──────────────────────────────────────────────┐
-        │  CadMath.Core     统一计算引擎               │  纯 .NET，零依赖
+        │  CadMath.Abstractions  契约层                │  纯 .NET，零依赖
+        │  PromptKind / Conversion / ICadAdapter        │  选择算法可单测
+        │  清单模型 / HostSeries                        │
+        └───────────────────▲──────────────────────────┘
+                            │ 只有它被两边引用
+        ┌───────────────────┴──────────────────────────┐
+        │  CadMath.Core     统一计算引擎               │  纯 .NET
         │  表达式解析 / 坐标输入 / 判定策略 / 错误码    │  100% 可单测
-        └───────────────────┬──────────────────────────┘
-                            │ 被引用（只依赖 Core）
-        ┌───────────────────▼──────────────────────────┐
-        │  CadMath.Abstractions 适配器契约             │  纯 .NET，零依赖
-        │  ICadAdapter / IAdapterHost / Manifest        │  选择算法可单测
-        └───────────────────┬──────────────────────────┘
-                            │ 实现契约
-   ┌────────────────────────▼───────────────────────────┐
-   │ Adapter Manager（CadMath.Shell 内）                │  引用 Core + Abstractions
-   │ 读配置 → 识别 CAD → 匹配适配器 → 检查兼容性 → 装载  │  + acmgd（仅为入口/命令）
-   └───────┬─────────────────────────────┬──────────────┘
+        └──────────────────────────────────────────────┘
+
+   ┌─────────────────────────────────────────────────────┐
+   │ Adapter Manager（CadMath.Shell 内）                 │  引用 Core + Abstractions
+   │ 读清单 → 识别 CAD → 匹配适配器 → 检查兼容性 → 装载   │  + acmgd（仅为入口/命令）
+   └───────┬─────────────────────────────┬───────────────┘
            │                             │
    ┌───────▼──────────────┐      ┌───────▼──────────────┐
    │ 现代适配器 2025/2026 │      │ 旧版适配器 2024-     │
@@ -28,12 +29,19 @@
    └──────────────────────┘      └──────────────────────┘
 ```
 
+> 实施时的一处修正：契约类型（`Conversion`、`PromptKind`）原本放在 Core 里，
+> 但那样适配器会通过传递引用间接依赖引擎，"适配器不碰数学"就只是口头约定。
+> 现在它们住在 Abstractions 里，Core 反过来依赖 Abstractions，规则由编译期保证。
+
 ## 1. 依赖方向（硬规则）
 
 ```
-CadMath.Adapters.*  →  CadMath.Abstractions  →  CadMath.Core
-CadMath.Shell       →  CadMath.Abstractions  →  CadMath.Core
-                       (Shell 另引用 acmgd，只用于 IExtensionApplication 与 CM3* 命令)
+CadMath.Adapter.*  ─┐
+                    ├─▶  CadMath.Abstractions  ◀─  CadMath.Core
+CadMath.Shell  ─────┘        (零依赖)               (只依赖 Abstractions)
+
+CadMath.Shell 另引用 acmgd/accoremgd/acdbmgd，只用于 IExtensionApplication 与 CM3* 命令
+CadMath.Adapter.Modern 另引用 acmgd（需要拦消息与读输入缓冲区）
 ```
 
 - `CadMath.Core` 里出现 `Autodesk.*` 或 `System.Windows.*` 就是设计错误。
@@ -79,32 +87,33 @@ public interface ICadAdapter
 
 ## 4. 适配器注册表（`adapters.json`）
 
-随 bundle 发布，Shell 从 `AppContext.BaseDirectory` 读取，可用
-`CADMATH_ADAPTER_CONFIG` 环境变量覆盖（测试/开发用）。
+随 bundle 发布，Shell 从**自身所在目录**（`Contents/Win64/`）读取；其中 `assembly`
+是相对该目录的路径，越出 bundle 的路径会被拒绝。宿主版本可用
+`CADMATH_HOST_SERIES` 环境变量覆盖（无 CAD 调试用）。
 
 ```json
 {
   "schemaVersion": 1,
   "adapters": [
     {
-      "id": "autocad-modern",
-      "displayName": "AutoCAD 2025/2026 现代适配器",
-      "assembly": "CadMath.Adapters.AutoCAD2025.dll",
-      "type": "CadMath.Adapters.AutoCAD2025.ModernAdapter",
+      "id": "modern-r25",
+      "displayName": "现代适配器（AutoCAD 2025 / 2026）",
+      "assembly": "Adapters/CadMath.Adapter.Modern.dll",
+      "type": "CadMath.Adapter.Modern.ModernAdapter",
       "series": ["R25.0", "R25.1"],
       "priority": 100,
       "verified": true,
       "runtime": "net8.0-windows"
     },
     {
-      "id": "autocad-legacy",
-      "displayName": "AutoCAD 2024 及更早版本适配器",
-      "assembly": "CadMath.Adapters.AutoCAD2024.dll",
-      "type": "CadMath.Adapters.AutoCAD2024.LegacyAdapter",
+      "id": "legacy-r24",
+      "displayName": "旧版适配器（AutoCAD 2024 及更早，待接入）",
+      "assembly": "Adapters/CadMath.Adapter.Legacy.dll",
+      "type": "CadMath.Adapter.Legacy.LegacyAdapter",
       "series": ["R24.0", "R24.1", "R24.2", "R24.3"],
       "priority": 50,
       "verified": false,
-      "runtime": "net48"
+      "runtime": "net8.0"
     }
   ]
 }
@@ -120,11 +129,11 @@ public interface ICadAdapter
 ## 5. 选择算法（`AdapterSelector`，纯函数，可单测）
 
 ```
-输入：manifest[], hostSeries, 已存在文件集合
-1. 过滤 series 不含 hostSeries 的项
-2. 过滤 assembly 文件不存在的项      → 原因 missing-assembly
-3. 按 (priority desc, series 精确命中优先) 排序
-4. 依次 TryStart，异常/失败记录原因后试下一个
+输入：manifest[], hostSeries, 程序集是否存在
+1. 过滤 series 不含 hostSeries 的项      → 原因 series-mismatch
+2. 过滤程序集缺失或路径越出 bundle 的项  → missing-assembly / path-escapes
+3. 按 priority 降序、同优先级按 id 序
+4. 依次 TryStart，失败记录原因后试下一个  → load-failed / missing-type / id-mismatch / start-failed
 5. 全部失败 → 无适配器状态：插件加载成功但拦截关闭，CM3STATUS 给出原因
 ```
 
@@ -135,17 +144,18 @@ public interface ICadAdapter
 
 不反射 AutoCAD 类型（Shell 只为准入 API 引用 acmgd）：
 
-1. 取当前进程已加载模块里的 `acmgd.dll`，读 `FileVersionInfo` → `25.1.60.0` → `R25.1`
-   （找不到模块时用 `acdbmgd.dll` 兜底）；
+1. 取当前进程已加载模块里的 `acmgd.dll`，读 `FileVersionInfo` → `25.1.60.0` → `R25.1`；
+   枚举不到时退回 `Application` 程序集的 `AssemblyVersion`；
 2. 环境变量 `CADMATH_HOST_SERIES`（如 `R25.1`）优先于上面，供 CI 与无 CAD 环境测试。
 
 ## 7. 装载与绑定
 
-- 每个适配器装配进独立 `AssemblyLoadContext`，避免同一进程多版本适配器抢同一个 `acmgd`。
-- `Load` 覆盖：`Autodesk.*`、`CadMath.Abstractions`、`System.*` 一律回落到
-  `AssemblyLoadContext.Default`（即 CAD 已装载的那份），其余走
-  `AssemblyDependencyResolver`。
-- 适配器目录就是 Shell 所在目录（`Contents/Win64`），不额外加搜索路径。
+- 每个适配器装配进独立 `AssemblyLoadContext`，避免同一进程多版本适配器抢同一个 `acmgd`，
+  并为将来"卸载/热替换适配器"留路。
+- `Load` 覆盖只做一件事：把 `CadMath.Abstractions`、`CadMath.Core` 解析到默认上下文
+  已加载的那一份（否则类型身份分裂，`is ICadAdapter` 恒为 false）；其余返回 null，
+  交回默认上下文（`acmgd` 等由 CAD 自己解析）。
+- `assembly` 相对 Shell 所在目录解析，且必须仍在 bundle 内。
 
 ## 8. 输入决策链
 
@@ -167,39 +177,40 @@ public interface ICadAdapter
 `Directory.Build.props` 里 `<Version>` 是唯一版本号：
 
 - 各程序集 `AssemblyVersion/FileVersion` 由它生成；
-- `PackageContents.xml` 由模板 `bundle/PackageContents.template.xml` 在打包时替换
-  `{{VERSION}}`；
-- `Plugin` 里的 `CM3STATUS` 从程序集读版本，不再写字面量。
+- `PackageContents.xml` 由模板 `bundle/PackageContents.xml` 在打包时替换
+  `__CADMATH_VERSION__`（出现两处）；
+- `ProductInfo.Version` 从程序集读版本，`CM3STATUS` 不再写字面量。
 
-`tools/pack.ps1 -Version x.y.z` 产出：`build/CadMath03.bundle/`、release ZIP、
-`SHA256SUMS.txt`。**无安装器版本**＝把 `CadMath03.bundle` 整目录复制到
-`%APPDATA%\Autodesk\ApplicationPlugins\`，或 `NETLOAD` 里面那个 `CadMath03.dll`。
+`build/build.ps1 -AcadDir "<AutoCAD 安装目录>"` 产出 `dist/CadMath03.bundle/` 与
+`dist/CadMath-InlineMath-<版本>.zip`。**无安装器版本**＝把 `CadMath03.bundle`
+整目录复制到 `%APPDATA%\Autodesk\ApplicationPlugins\`，或 `NETLOAD` 里面那个
+`CadMath03.dll`。
 
 ## 10. 测试策略
 
 | 层 | 载体 | 是否依赖 CAD |
 |---|---|---|
-| Core 数学/策略 | `tests/CadMath.Tests` 控制台断言（无 NuGet 依赖） | 否 |
-| 选择算法/清单解析 | 同上 | 否 |
-| Shell 中转（假适配器） | 同上 | 否 |
-| 适配器真机 | `accoreconsole` 冒烟 + 手工 UI 验收 | 是 |
+| Core 数学/判定 | `tests/CadMath.Tests` 控制台断言（无 NuGet 依赖） | 否 |
+| 清单解析 / 选择算法 / 宿主序列 | 同上 | 否 |
+| Shell 装配与适配器装载 | 真机冒烟：日志 + `CM3STATUS` | 是 |
+| 适配器行为（拦截、缓冲区、焦点） | 人工 UI 验收 + 日志核对 | 是 |
 
-v0.3.3 的 541 条解析用例与 36 条路由用例**原样搬过来**当作回归基准，
-新实现必须逐条通过；这是"逻辑可以借用"的硬证明。
+v0.3.3 的 541 条解析断言与 45 条路由断言**原样搬过来**当作回归基准，
+新实现必须逐条通过；这是"逻辑可以借用"的硬证明（当前 617 条全绿）。
 
-## 11. 迁移阶段
+## 11. 迁移阶段（实际进度）
 
-| 阶段 | 内容 | 验收 |
+| 阶段 | 内容 | 状态 |
 |---|---|---|
-| M1 | Core + Abstractions + 测试工程，旧用例全绿 | `dotnet run --project tests/CadMath.Tests` 全 PASS |
-| M2 | Shell（入口/命令/日志/清单/选择）+ 假适配器 | 单元测试覆盖选择与降级路径 |
-| M3 | 现代适配器移植（焦点、缓冲区、提示事件） | `accoreconsole` 能 NETLOAD 并接受一次输入 |
-| M4 | 打包脚本 + 无安装器分发 + 文档 | 复制 bundle 后 AutoCAD 启动即加载 |
-| M5 | 安装器回归（后置，不在本次） | 待定 |
+| M1 | Core + Abstractions + 测试工程，旧用例全绿 | ✅ `checks=617 failures=0` |
+| M2 | Shell（入口/命令/日志/清单/选择/装载） | ✅ 选择与清单有单测；装配由真机日志验证 |
+| M3 | 现代适配器移植（焦点、缓冲区、提示事件） | ✅ 2026 真机拦截/改写/几何全部验证 |
+| M4 | 打包脚本 + 无安装器分发 + 文档 | ✅ `build/build.ps1` → `dist/`，`README` + 本文 + `IMPLEMENTATION.md` |
+| M5 | 安装器（安装/升级/卸载/回滚） | ⏳ 后置，接口与 bundle 布局已留好 |
 
 ## 12. 待定 / 已知风险
 
-- **ACL 风险**：`AssemblyLoadContext` 卸载与 AutoCAD 关闭顺序的交互需真机验证。
-- **2024 适配器**：旧版 API 差异未调研，先留 `series` 与接口，不实现。
-- **改名代价**：`CadMath03` 程序集名、`CadMath03.bundle` 目录名保留不动，
-  否则老用户升级会被现有 `install.json` 的 `Target` 校验挡住。
+- **ALC 卸载**：真机上从未触发过卸载路径（CAD 关闭即进程结束），"热替换适配器"仍属未验证能力。
+- **2024 适配器**：旧版 API 差异未调研，`legacy-r24` 只有接口与失败提示，`TryStart` 恒 false。
+- **改名代价**：`CadMath03` 程序集名、`CadMath03.bundle` 目录名、`ProductCode`/`UpgradeCode`
+  保留不动，否则老用户升级会并存两套或被现有 `install.json` 的 `Target` 校验挡住。
