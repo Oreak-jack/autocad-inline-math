@@ -1,10 +1,21 @@
+# 构建输出
 **/bin/
 **/obj/
-build/
+objs/
 dist/
-*.dll
-*.pdb
-*.zip
+
+# 本地备份（旧版 bundle 快照）
+backup/
+
+# 上游 0.3.3 只读参考克隆，不属于本仓库
+src_repo/
+
+# 日志与临时文件
 *.log
+*.tmp
+
+# 编辑器 / IDE
 .vs/
-.idea/
+.vscode/
+*.user
+*.suo

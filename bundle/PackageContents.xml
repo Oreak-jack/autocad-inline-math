@@ -1,8 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
-<ApplicationPackage SchemaVersion="1.0" AutodeskProduct="AutoCAD" Name="CadMath03" AppVersion="0.3.3" Description="Arithmetic in native bottom command line" Author="CadMath" ProductCode="{04913737-F911-4978-9F6B-2DB24F3DCC03}" UpgradeCode="{0937D725-1309-48F0-A258-BC54916D174A}">
+<ApplicationPackage SchemaVersion="1.0" AutodeskProduct="AutoCAD" Name="CadMath03" AppVersion="__CADMATH_VERSION__" Description="Arithmetic in native bottom command line" Author="CadMath" ProductCode="{04913737-F911-4978-9F6B-2DB24F3DCC03}" UpgradeCode="{0937D725-1309-48F0-A258-BC54916D174A}">
  <CompanyDetails Name="CadMath" />
+ <!-- 构建脚本会把 __CADMATH_VERSION__ 换成 Directory.Build.props 里的 Version。不要在别处再写死版本。 -->
  <Components>
   <RuntimeRequirements OS="Win64" Platform="AutoCAD" SeriesMin="R25.0" SeriesMax="R25.1" />
-  <ComponentEntry AppName="CadMath03" AppType=".Net" Version="0.3.3" ModuleName="./Contents/Win64/CadMath03.dll" LoadOnAutoCADStartup="True" />
+  <ComponentEntry AppName="CadMath03" AppType=".Net" Version="__CADMATH_VERSION__" ModuleName="./Contents/Win64/CadMath03.dll" LoadOnAutoCADStartup="True" />
  </Components>
 </ApplicationPackage>

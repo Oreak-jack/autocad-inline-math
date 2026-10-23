@@ -1,0 +1,14 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+    <RootNamespace>CadMath.Adapter.Legacy</RootNamespace>
+    <AssemblyName>CadMath.Adapter.Legacy</AssemblyName>
+    <Description>AutoCAD 2024 及更早版本的适配器占位实现：先占住契约，接入时只改本工程。</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CadMath.Abstractions\CadMath.Abstractions.csproj" />
+  </ItemGroup>
+
+</Project>
