@@ -144,3 +144,13 @@ function Get-OsDescription {
     } catch { }
     return ('{0}（{1}，{2}）' -f $caption, [Environment]::OSVersion.Version, (Get-ProcessArchitecture))
 }
+
+# PS 5.1 陷阱：@($genericList) 会抛 "参数类型不匹配"，因此统一用这个函数把任意输入变成数组。
+function ConvertTo-ItemArray {
+    param($Value)
+    $items = @()
+    if ($null -ne $Value) {
+        foreach ($entry in $Value) { $items += $entry }
+    }
+    return ,$items
+}

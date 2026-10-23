@@ -161,13 +161,15 @@ function Read-Choice {
 
 function Read-InstanceSelection {
     param($Instances, [string]$Prompt = '请输入序号（可多选，如 1,2；a=全部）：')
+    # 不能直接 @($Instances)：PS 5.1 对泛型 List 做数组子表达式会抛"参数类型不匹配"。
+    $items = ConvertTo-ItemArray -Value $Instances
     while ($true) {
         Write-Host ''
         Write-Host $Prompt -ForegroundColor Cyan -NoNewline
         $input = Read-Host
         if ($null -eq $input) { continue }
         $trimmed = $input.Trim().ToLowerInvariant()
-        if ($trimmed -eq 'a') { return @($Instances) }
+        if ($trimmed -eq 'a') { return $items }
         $selected = New-Object System.Collections.Generic.List[object]
         $valid = $true
         foreach ($piece in $trimmed.Split(',')) {
@@ -175,8 +177,8 @@ function Read-InstanceSelection {
             if ($text -eq '') { continue }
             if ($text -notmatch '^\d+$') { $valid = $false; break }
             $index = [int]$text
-            if ($index -lt 1 -or $index -gt @($Instances).Count) { $valid = $false; break }
-            $item = $Instances[$index - 1]
+            if ($index -lt 1 -or $index -gt $items.Count) { $valid = $false; break }
+            $item = $items[$index - 1]
             if (-not ($selected | Where-Object { $_.Id -eq $item.Id })) { $selected.Add($item) }
         }
         if (-not $valid -or $selected.Count -eq 0) {
@@ -402,7 +404,7 @@ function Invoke-UninstallFlow {
         $index++
         Write-Host ('  {0}. {1}（{2}）— {3}' -f $index, $instance.Label, $instance.Release, (Get-PluginStateText -Instance $instance))
     }
-    $selected = Read-InstanceSelection -Instances $managed -Prompt '请输入要卸载的序号（可多选，如 1,2；a=全部）：'
+    $selected = Read-InstanceSelection -Instances ($managed.ToArray()) -Prompt '请输入要卸载的序号（可多选，如 1,2；a=全部）：'
     $state = Read-InstallState -StateRoot $StateRoot
     Write-Host ''
     Write-Host '[将删除的内容]' -ForegroundColor White
@@ -577,6 +579,8 @@ try {
     }
 } catch {
     Write-Err -Stage 'FATAL' $_.Exception.Message
+    Write-Err -Stage 'FATAL' ('异常类型：' + $_.Exception.GetType().FullName)
+    if ($_.InvocationInfo) { Write-Err -Stage 'FATAL' ($_.InvocationInfo.PositionMessage) }
     Write-Host ('日志：{0}' -f (Get-LogPath)) -ForegroundColor Gray
     exit 1
 }

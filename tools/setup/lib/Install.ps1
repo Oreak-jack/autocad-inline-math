@@ -98,6 +98,20 @@ function Get-OwnedDirectories {
     return $result.ToArray()
 }
 
+function Get-RemovableDirectories {
+    # 卸载时要清理的 TRUSTEDPATHS 条目：本次安装加入的两条 + 0.3.x 用 ApplicationPlugins 时注册的两条
+    # （升级/卸载后那些目录已经不存在，但用户配置里还留着无效路径）。
+    param([string]$PayloadDir)
+    $result = New-Object System.Collections.Generic.List[string]
+    if ($PayloadDir) {
+        foreach ($dir in (Get-OwnedDirectories -PayloadDir $PayloadDir)) { $result.Add($dir) }
+    }
+    $legacy = Join-Path (Get-ApplicationsRoot) 'CadMath03.bundle\Contents\Win64'
+    $result.Add($legacy)
+    $result.Add((Join-Path $legacy 'Adapters'))
+    return $result.ToArray()
+}
+
 function Install-CadMathPackage {
     param(
         [Parameter(Mandatory)]$Setup,
@@ -392,8 +406,7 @@ function Uninstall-CadMathInstances {
     $state = Read-InstallState -StateRoot $StateRoot
     $payload = $state.payloadPath
     if ($payload -and -not (Test-Path -LiteralPath $payload)) { $payload = $null }
-    $owned = @()
-    if ($payload) { $owned = Get-OwnedDirectories -PayloadDir $payload }
+    $owned = @(Get-RemovableDirectories -PayloadDir $payload)
     $remaining = New-Object System.Collections.Generic.List[object]
     foreach ($existing in @($state.instances)) {
         $selected = $false

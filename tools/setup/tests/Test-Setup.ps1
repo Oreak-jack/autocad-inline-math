@@ -309,6 +309,15 @@ try {
         $info = Get-BundleInfo -Bundle $BundleDir
         $info.Version -eq $setup.releaseVersion
     }
+    Check 'PS 5.1 的 @(泛型List) 陷阱已用 ConvertTo-ItemArray 规避' {
+        $list = New-Object System.Collections.Generic.List[object]
+        $list.Add([pscustomobject]@{ A = 1 })
+        $list.Add([pscustomobject]@{ A = 2 })
+        $converted = ConvertTo-ItemArray -Value $list
+        $single = ConvertTo-ItemArray -Value ([pscustomobject]@{ A = 3 })
+        $none = ConvertTo-ItemArray -Value $null
+        $converted.Count -eq 2 -and $single.Count -eq 1 -and $none.Count -eq 0 -and $converted[1].A -eq 2
+    }
     Check '启动批处理是 CRLF 且纯 ASCII（否则 cmd.exe 会解析错乱闪退）' {
         $launchers = @(
             (Join-Path $PSScriptRoot '..\CadMath-Setup.cmd'),
