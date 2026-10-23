@@ -25,9 +25,22 @@ param(
 Set-StrictMode -Version 2
 $ErrorActionPreference = 'Stop'
 
-$ToolVersion = '0.4.5'
 $toolRoot = Split-Path $PSScriptRoot -Parent
 $toolRoot = Split-Path $toolRoot -Parent
+
+# 工具版本以同一发行包里的 setup.json 为准（工具与插件同版本发布），
+# 找不到清单时才退回编译期常量，避免横幅和实际装的版本对不上。
+$ToolVersion = ''
+$bundledSetup = Join-Path $toolRoot 'setup.json'
+if (Test-Path -LiteralPath $bundledSetup) {
+    try {
+        $bundledRaw = [IO.File]::ReadAllText((Resolve-Path -LiteralPath $bundledSetup).ProviderPath, [Text.Encoding]::UTF8)
+        $bundledMatch = [regex]::Match($bundledRaw, '"toolVersion"\s*:\s*"([^"]+)"')
+        if ($bundledMatch.Success) { $ToolVersion = $bundledMatch.Groups[1].Value }
+    }
+    catch { $ToolVersion = '' }
+}
+if ([string]::IsNullOrWhiteSpace($ToolVersion)) { $ToolVersion = '0.4.8' }
 # 用户有没有显式指定安装方式：没指定时，交互模式会问一次，默认按版本注册。
 $ModeExplicit = $PSBoundParameters.ContainsKey('Mode')
 
