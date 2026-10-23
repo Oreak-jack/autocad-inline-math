@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <RootNamespace>CadMath.Adapter.Modern</RootNamespace>
+    <AssemblyName>CadMath.Adapter.Modern</AssemblyName>
+    <Description>AutoCAD 2025/2026 输入拦截适配器：只做事件翻译与输入队列改写。</Description>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CadMath.Abstractions\CadMath.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="acmgd">
+      <HintPath>$(AcadDir)\acmgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="accoremgd">
+      <HintPath>$(AcadDir)\accoremgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="acdbmgd">
+      <HintPath>$(AcadDir)\acdbmgd.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <Target Name="RequireAcadDir" BeforeTargets="ResolveAssemblyReferences" Condition="'$(AcadDir)' == ''">
+    <Error Text="未设置 AutoCAD 托管引用目录。请构建时传 -p:AcadDir=&quot;D:\AutoCAD 2026&quot;，或设置环境变量 ACAD_REFERENCE_DIR。" />
+  </Target>
+
+</Project>

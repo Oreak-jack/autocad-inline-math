@@ -1,0 +1,64 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{8AC5BC65-1433-4584-AB8A-B6F9E89F7AD5}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CadMath.Core", "src\CadMath.Core\CadMath.Core.csproj", "{1ADCE7CB-1F03-44CD-8B0E-924B418F781E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CadMath.Abstractions", "src\CadMath.Abstractions\CadMath.Abstractions.csproj", "{96095EE4-5C5C-4C3A-BF23-7CCB7F83E46C}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CadMath.Adapter.Modern", "src\CadMath.Adapter.Modern\CadMath.Adapter.Modern.csproj", "{58CB3081-669A-4E0E-8AE5-1639095BAB92}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CadMath.Adapter.Legacy", "src\CadMath.Adapter.Legacy\CadMath.Adapter.Legacy.csproj", "{CBCA3AE5-1C82-436C-89A0-A07BF65D1E29}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CadMath.Shell", "src\CadMath.Shell\CadMath.Shell.csproj", "{091A9CBC-F25D-48D0-AB77-09F88B2FD0CB}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "tests", "tests", "{65D0122C-51E3-4D5B-8C1B-6E979F613AF5}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "CadMath.Tests", "tests\CadMath.Tests\CadMath.Tests.csproj", "{AE942B80-F5AC-4109-BC1D-CA9462EF3437}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{1ADCE7CB-1F03-44CD-8B0E-924B418F781E}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{1ADCE7CB-1F03-44CD-8B0E-924B418F781E}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{1ADCE7CB-1F03-44CD-8B0E-924B418F781E}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{1ADCE7CB-1F03-44CD-8B0E-924B418F781E}.Release|Any CPU.Build.0 = Release|Any CPU
+		{96095EE4-5C5C-4C3A-BF23-7CCB7F83E46C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{96095EE4-5C5C-4C3A-BF23-7CCB7F83E46C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{96095EE4-5C5C-4C3A-BF23-7CCB7F83E46C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{96095EE4-5C5C-4C3A-BF23-7CCB7F83E46C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{58CB3081-669A-4E0E-8AE5-1639095BAB92}.Debug|Any CPU.ActiveCfg = Debug|x64
+		{58CB3081-669A-4E0E-8AE5-1639095BAB92}.Debug|Any CPU.Build.0 = Debug|x64
+		{58CB3081-669A-4E0E-8AE5-1639095BAB92}.Release|Any CPU.ActiveCfg = Release|x64
+		{58CB3081-669A-4E0E-8AE5-1639095BAB92}.Release|Any CPU.Build.0 = Release|x64
+		{CBCA3AE5-1C82-436C-89A0-A07BF65D1E29}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{CBCA3AE5-1C82-436C-89A0-A07BF65D1E29}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{CBCA3AE5-1C82-436C-89A0-A07BF65D1E29}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{CBCA3AE5-1C82-436C-89A0-A07BF65D1E29}.Release|Any CPU.Build.0 = Release|Any CPU
+		{091A9CBC-F25D-48D0-AB77-09F88B2FD0CB}.Debug|Any CPU.ActiveCfg = Debug|x64
+		{091A9CBC-F25D-48D0-AB77-09F88B2FD0CB}.Debug|Any CPU.Build.0 = Debug|x64
+		{091A9CBC-F25D-48D0-AB77-09F88B2FD0CB}.Release|Any CPU.ActiveCfg = Release|x64
+		{091A9CBC-F25D-48D0-AB77-09F88B2FD0CB}.Release|Any CPU.Build.0 = Release|x64
+		{AE942B80-F5AC-4109-BC1D-CA9462EF3437}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{AE942B80-F5AC-4109-BC1D-CA9462EF3437}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{AE942B80-F5AC-4109-BC1D-CA9462EF3437}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{AE942B80-F5AC-4109-BC1D-CA9462EF3437}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{1ADCE7CB-1F03-44CD-8B0E-924B418F781E} = {8AC5BC65-1433-4584-AB8A-B6F9E89F7AD5}
+		{96095EE4-5C5C-4C3A-BF23-7CCB7F83E46C} = {8AC5BC65-1433-4584-AB8A-B6F9E89F7AD5}
+		{58CB3081-669A-4E0E-8AE5-1639095BAB92} = {8AC5BC65-1433-4584-AB8A-B6F9E89F7AD5}
+		{CBCA3AE5-1C82-436C-89A0-A07BF65D1E29} = {8AC5BC65-1433-4584-AB8A-B6F9E89F7AD5}
+		{091A9CBC-F25D-48D0-AB77-09F88B2FD0CB} = {8AC5BC65-1433-4584-AB8A-B6F9E89F7AD5}
+		{AE942B80-F5AC-4109-BC1D-CA9462EF3437} = {65D0122C-51E3-4D5B-8C1B-6E979F613AF5}
+	EndGlobalSection
+EndGlobal
