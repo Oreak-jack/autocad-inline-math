@@ -5,19 +5,19 @@
 
 .DESCRIPTION
     1. 从 Directory.Build.props 读取唯一版本号；
-    2. 编译 Shell（net8 + net48 两代）与两个适配器；
-    3. 组装 bundle：Contents\Win64（2025/2026，net8）与 Contents\Win64-2024（2024，net48）；
+    2. 编译三个宿主：net8（2025/2026）、net48·24.3（2021–2024）、net48·23.1（2020），以及各自适配器；
+    3. 组装 bundle：Contents\Win64、Contents\Win64-2024、Contents\Win64-2020；
     4. 生成 setup.json（发行清单：hosts、逐文件 SHA-256、适配器状态）；
     5. 组装发行 zip（bundle + 安装器 + setup.json）并生成 SHA256SUMS.txt。
 
 .PARAMETER Experimental
-    把尚未真机验证的适配器（legacy-r24）状态从 planned 提升为 built，产出实验包。
-    正式发行不要带这个开关：2024 在验证通过前，正式包默认不装它。
+    把尚未真机验证的适配器（legacy-r24 / legacy-r23）状态从 planned 提升为 built，产出实验包。
+    正式发行不要带这个开关：没验证过的适配器默认不装。
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File build\build.ps1
 
-    # 给测试者的 2024 实验包
+    # 给测试者的实验包
     powershell -ExecutionPolicy Bypass -File build\build.ps1 -Experimental
 #>
 [CmdletBinding()]
@@ -59,18 +59,20 @@ if (-not $version) { throw 'Directory.Build.props 里没有 <Version>。' }
 $dist = Join-Path $root 'dist'
 $bundle = Join-Path $dist 'CadMath03.bundle'
 $bundle2024 = Join-Path $dist 'CadMath03-2024.bundle'
+$bundle2020 = Join-Path $dist 'CadMath03-2020.bundle'
 $win64 = Join-Path $bundle 'Contents\Win64'
 $win64_2024 = Join-Path $bundle 'Contents\Win64-2024'
+$win64_2020 = Join-Path $bundle 'Contents\Win64-2020'
 $staging = Join-Path $root 'objs\publish'
 
 Write-Host "CadMath $version  |  $Configuration  |  Experimental=$($Experimental.IsPresent)"
 
 if (Test-Path $dist) { Remove-Item $dist -Recurse -Force }
 if (Test-Path $staging) { Remove-Item $staging -Recurse -Force }
-New-Item -ItemType Directory -Force -Path $win64, (Join-Path $win64 'Adapters'), $win64_2024, (Join-Path $win64_2024 'Adapters'), $staging | Out-Null
+New-Item -ItemType Directory -Force -Path $win64, (Join-Path $win64 'Adapters'), $win64_2024, (Join-Path $win64_2024 'Adapters'), $win64_2020, (Join-Path $win64_2020 'Adapters'), $staging | Out-Null
 
-function Build-Project([string]$project, [string]$output, [string]$framework = '') {
-    Write-Host "  构建 $project $framework"
+function Build-Project([string]$project, [string]$output, [string]$framework = '', [string[]]$properties = @()) {
+    Write-Host "  构建 $project $framework $($properties -join ' ')"
     $arguments = @(
         'build', (Join-Path $root $project),
         '-c', $Configuration,
@@ -79,48 +81,70 @@ function Build-Project([string]$project, [string]$output, [string]$framework = '
         '--nologo', '-v', 'q'
     )
     if ($framework) { $arguments += @('-f', $framework) }
+    foreach ($property in $properties) { $arguments += @($property) }
+    # 同一个工程要用不同的 AutoCAD 引用编三次，必须强制重新编译，否则增量构建会复用上一次的中间产物。
+    $arguments += @('-t:Rebuild')
 
     & $dotnet @arguments | Out-Host
-    if ($LASTEXITCODE -ne 0) { throw "构建失败：$project $framework" }
+    if ($LASTEXITCODE -ne 0) { throw "构建失败：$project $framework $($properties -join ' ')" }
 }
 
-try {
-    Build-Project 'src\CadMath.Shell\CadMath.Shell.csproj' (Join-Path $staging 'shell-net8') 'net8.0-windows'
-    Build-Project 'src\CadMath.Shell\CadMath.Shell.csproj' (Join-Path $staging 'shell-net48') 'net48'
-    Build-Project 'src\CadMath.Adapter.Modern\CadMath.Adapter.Modern.csproj' (Join-Path $staging 'modern')
-    Build-Project 'src\CadMath.Adapter.Legacy2024\CadMath.Adapter.Legacy2024.csproj' (Join-Path $staging 'legacy2024')
-} catch {
-    # -o 与多目标工程不能同时用：多目标时必须指定 -f，所以前面已经分开构建。
-    throw
+# ---- 三个宿主：目录、目标框架、AutoCAD 引用版本 -------------------------
+$hostsPlan = @(
+    [ordered]@{ key = 'win64'; dir = $win64; framework = 'net8.0-windows'; staging = 'shell-net8'; properties = @('-p:AcadSdkVersion=25.1.0'); note = '2025 / 2026 · .NET 8'; sdk = '25.1.0' },
+    [ordered]@{ key = 'win64-2024'; dir = $win64_2024; framework = 'net48'; staging = 'shell-net48-2024'; properties = @('-p:AcadLegacySdkVersion=24.3.0'); note = '2021–2024 · .NET Framework 4.8'; sdk = '24.3.0' },
+    [ordered]@{ key = 'win64-2020'; dir = $win64_2020; framework = 'net48'; staging = 'shell-net48-2020'; properties = @('-p:AcadLegacySdkVersion=23.1.0'); note = '2020 · .NET Framework 4.8'; sdk = '23.1.0' }
+)
+
+$adaptersPlan = @(
+    [ordered]@{ key = 'modern'; project = 'src\CadMath.Adapter.Modern\CadMath.Adapter.Modern.csproj'; host = 'win64'; file = 'CadMath.Adapter.Modern.dll' },
+    [ordered]@{ key = 'legacy2024'; project = 'src\CadMath.Adapter.Legacy2024\CadMath.Adapter.Legacy2024.csproj'; host = 'win64-2024'; file = 'CadMath.Adapter.Legacy2024.dll' },
+    [ordered]@{ key = 'legacy2020'; project = 'src\CadMath.Adapter.Legacy2020\CadMath.Adapter.Legacy2020.csproj'; host = 'win64-2020'; file = 'CadMath.Adapter.Legacy2020.dll' }
+)
+
+Write-Host '构建 Shell（三个宿主）'
+foreach ($plan in $hostsPlan) {
+    Build-Project 'src\CadMath.Shell\CadMath.Shell.csproj' (Join-Path $staging $plan.staging) $plan.framework $plan.properties
+}
+
+Write-Host '构建适配器'
+foreach ($plan in $adaptersPlan) {
+    Build-Project $plan.project (Join-Path $staging $plan.key)
 }
 
 # ---- 运行时清单（每个宿主目录一份，只列出自己能用的适配器） ---------------
 $allAdapters = Get-Content -Raw -Encoding UTF8 (Join-Path $root 'adapters\adapters.json') | ConvertFrom-Json
 
-function Write-RuntimeManifest([string]$path, [string]$runtimeFilter) {
-    $pick = @($allAdapters.adapters | Where-Object { [string]$_.runtime -eq $runtimeFilter })
-    if ($pick.Count -eq 0) { throw "没有 runtime=$runtimeFilter 的适配器。" }
+function Get-AdapterHost([object]$adapter) {
+    if ($adapter.PSObject.Properties['host'] -and $adapter.host) { return [string]$adapter.host }
+    if ([string]$adapter.runtime -eq 'net8.0-windows') { return 'win64' }
+    return 'win64-2024'
+}
+
+function Write-RuntimeManifest([string]$path, [string]$hostKey) {
+    $pick = @($allAdapters.adapters | Where-Object { (Get-AdapterHost $_) -eq $hostKey })
+    if ($pick.Count -eq 0) { throw "宿主 $hostKey 没有对应的适配器。" }
 
     $manifest = [ordered]@{
         schemaVersion = [int]$allAdapters.schemaVersion
         adapters      = $pick
     }
-    $json = $manifest | ConvertTo-Json -Depth 8
-    [IO.File]::WriteAllText($path, $json, (New-Object Text.UTF8Encoding($false)))
+    [IO.File]::WriteAllText($path, ($manifest | ConvertTo-Json -Depth 8), (New-Object Text.UTF8Encoding($false)))
 }
 
-Write-RuntimeManifest (Join-Path $win64 'adapters.json') 'net8.0-windows'
-Write-RuntimeManifest (Join-Path $win64_2024 'adapters.json') 'net48'
-
-# ---- 组装两个宿主目录 ---------------------------------------------------
+# ---- 组装宿主体 ---------------------------------------------------------
 $hostFiles = @('CadMath03.dll', 'CadMath.Core.dll', 'CadMath.Abstractions.dll')
-foreach ($file in $hostFiles) {
-    Copy-Item (Join-Path (Join-Path $staging 'shell-net8') $file) $win64
-    Copy-Item (Join-Path (Join-Path $staging 'shell-net48') $file) $win64_2024
+foreach ($plan in $hostsPlan) {
+    foreach ($file in $hostFiles) {
+        Copy-Item (Join-Path (Join-Path $staging $plan.staging) $file) $plan.dir
+    }
+    Write-RuntimeManifest (Join-Path $plan.dir 'adapters.json') $plan.key
 }
 
-Copy-Item (Join-Path $staging 'modern\CadMath.Adapter.Modern.dll') (Join-Path $win64 'Adapters')
-Copy-Item (Join-Path $staging 'legacy2024\CadMath.Adapter.Legacy2024.dll') (Join-Path $win64_2024 'Adapters')
+foreach ($plan in $adaptersPlan) {
+    $target = @($hostsPlan | Where-Object { $_.key -eq $plan.host })[0]
+    Copy-Item (Join-Path (Join-Path $staging $plan.key) $plan.file) (Join-Path $target.dir 'Adapters')
+}
 
 # ---- PackageContents 与构建信息 ----------------------------------------
 function Write-ApplicationPackage([string]$template, [string]$targetFile) {
@@ -131,10 +155,14 @@ function Write-ApplicationPackage([string]$template, [string]$targetFile) {
 
 Write-ApplicationPackage 'bundle\PackageContents.xml' (Join-Path $bundle 'PackageContents.xml')
 
-# 2024 单独一份 bundle（给 ApplicationPlugins 全局安装用），内容取自 Win64-2024
+# 2024 / 2020 各出一份独立 bundle（给 ApplicationPlugins 全局安装用），内容取自各自的宿主体
 New-Item -ItemType Directory -Force -Path (Join-Path $bundle2024 'Contents') | Out-Null
 Copy-Item -Recurse -Force $win64_2024 (Join-Path $bundle2024 'Contents\Win64-2024')
 Write-ApplicationPackage 'bundle\PackageContents-2024.xml' (Join-Path $bundle2024 'PackageContents.xml')
+
+New-Item -ItemType Directory -Force -Path (Join-Path $bundle2020 'Contents') | Out-Null
+Copy-Item -Recurse -Force $win64_2020 (Join-Path $bundle2020 'Contents\Win64-2020')
+Write-ApplicationPackage 'bundle\PackageContents-2020.xml' (Join-Path $bundle2020 'PackageContents.xml')
 
 $buildInfo = @"
 CadMath03 $version
@@ -146,17 +174,23 @@ CadMath03 $version
   CadMath03.dll            (net8.0-windows, 官方 NuGet 25.1.0 引用)
   Adapters/CadMath.Adapter.Modern.dll
 
-[2024 · .NET Framework 4.8]  Contents/Win64-2024
+[2021–2024 · .NET Framework 4.8]  Contents/Win64-2024
   CadMath03.dll            (net48, 官方 NuGet 24.3.0 引用)
   Adapters/CadMath.Adapter.Legacy2024.dll
+
+[2020 · .NET Framework 4.8]  Contents/Win64-2020
+  CadMath03.dll            (net48, 官方 NuGet 23.1.0 引用)
+  Adapters/CadMath.Adapter.Legacy2020.dll
 "@
 [IO.File]::WriteAllText((Join-Path $bundle 'BUILD-INFO.txt'), $buildInfo, (New-Object Text.UTF8Encoding($true)))
 [IO.File]::WriteAllText((Join-Path $bundle2024 'BUILD-INFO.txt'), $buildInfo, (New-Object Text.UTF8Encoding($true)))
+[IO.File]::WriteAllText((Join-Path $bundle2020 'BUILD-INFO.txt'), $buildInfo, (New-Object Text.UTF8Encoding($true)))
 
 # ---- 发行清单 setup.json ------------------------------------------------
 $hosts = @(
     [ordered]@{ series = @('R25.0', 'R25.1'); runtime = 'net8.0-windows'; entry = 'Contents/Win64/CadMath03.dll'; bundle = 'CadMath03.bundle' },
-    [ordered]@{ series = @('R24.0', 'R24.1', 'R24.2', 'R24.3'); runtime = 'net48'; entry = 'Contents/Win64-2024/CadMath03.dll'; bundle = 'CadMath03-2024.bundle' }
+    [ordered]@{ series = @('R24.0', 'R24.1', 'R24.2', 'R24.3'); runtime = 'net48'; entry = 'Contents/Win64-2024/CadMath03.dll'; bundle = 'CadMath03-2024.bundle' },
+    [ordered]@{ series = @('R23.1'); runtime = 'net48'; entry = 'Contents/Win64-2020/CadMath03.dll'; bundle = 'CadMath03-2020.bundle' }
 )
 
 $releaseAdapters = @()
@@ -166,10 +200,12 @@ foreach ($adapter in @($allAdapters.adapters)) {
 
     if ($Experimental -and $status -eq 'planned') { $status = 'built' }
 
-    $hostDir = if ([string]$adapter.runtime -eq 'net48') { 'Contents/Win64-2024' } else { 'Contents/Win64' }
+    $hostKey = Get-AdapterHost $adapter
+    $hostPlan = @($hostsPlan | Where-Object { $_.key -eq $hostKey })[0]
+    $relativeHost = $hostPlan.dir.Substring($bundle.Length + 1).Replace('\', '/')
     $releaseAdapters += [ordered]@{
         id           = [string]$adapter.id
-        path         = $hostDir + '/Adapters/' + (Split-Path ([string]$adapter.assembly) -Leaf)
+        path         = $relativeHost + '/Adapters/' + (Split-Path ([string]$adapter.assembly) -Leaf)
         cadSeries    = @($adapter.series)
         runtime      = [string]$adapter.runtime
         architecture = 'x64'
@@ -218,11 +254,12 @@ Write-Host ''
 Get-ChildItem $dist -Recurse -File | Where-Object { $_.FullName -notmatch '\\tools\\' } | ForEach-Object { '  ' + $_.FullName.Substring($dist.Length + 1) }
 
 if (-not $NoZip) {
-    $name = if ($Experimental) { "CadMath-InlineMath-$version-experimental-2024.zip" } else { "CadMath-InlineMath-$version.zip" }
+    $name = if ($Experimental) { "CadMath-InlineMath-$version-experimental.zip" } else { "CadMath-InlineMath-$version.zip" }
     $zip = Join-Path $dist $name
     $items = @(
         $bundle,
         $bundle2024,
+        $bundle2020,
         (Join-Path $dist 'CadMath-Setup.cmd'),
         (Join-Path $dist 'tools'),
         (Join-Path $dist 'setup.json')
@@ -236,4 +273,4 @@ if (-not $NoZip) {
 
 Write-Host ''
 Write-Host '完成。'
-Write-Host '  2025/2026：Contents\Win64（.NET 8）；2024：Contents\Win64-2024（.NET Framework 4.8）。'
+Write-Host '  2025/2026：Contents\Win64；2021–2024：Contents\Win64-2024；2020：Contents\Win64-2020。'

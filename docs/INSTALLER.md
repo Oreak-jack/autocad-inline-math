@@ -91,7 +91,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\CadMath-Setup.ps
 - 两个适配器同等匹配 → `ambiguous`（不猜，要求人工确认）
 
 没有可用适配器的实例会被跳过并打印原因，安装不会"装上去再发现跑不起来"。
-`legacy-r24` 目前是 `planned`，所以 2024 会显示 `legacy-r24:status-planned` 而不是硬装一个占位适配器。
+`legacy-r23`（2020）目前是 `planned`，所以正式包里 2020 会显示 `legacy-r23:status-planned`；
+用 `-Experimental` 产出的实验包把它提升为 `built` 之后才能装上（见文末"实验包"）。
 
 ---
 
@@ -209,15 +210,17 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\tests\Test-Setup
 `CadMath-Setup.cmd` 用 **CRLF 行尾 + 纯 ASCII**。cmd.exe 遇到 LF-only 的批处理会把整份脚本切错行（报一串 `is not recognized`，最后停在 `pause`，双击看起来就是闪退）。`.gitattributes` 已对 `*.cmd` 强制 `eol=crlf`，`build/build.ps1` 直接复制仓库里的文件，测试里也有一条断言防止它被改回去。
 ---
 
-## 0.4.2：一套包、两代宿主
+## 0.4.2 起：一套包、多代宿主
 
-2024 用 .NET Framework 4.8，2025/2026 用 .NET 8，进程里只能有一个 CLR。做法不是"再发一个安装器"，
-而是在同一个包里放两代宿主，让安装器按实例的 CAD 系列选入口：
+2024 / 2020 用 .NET Framework 4.8，2025/2026 用 .NET 8，进程里只能有一个 CLR。做法不是"再发一个安装器"，
+而是在同一个包里放多代宿主，让安装器按实例的 CAD 系列选入口：
 
 ```
-CadMath03.bundle/Contents/Win64/        .NET 8      ← 2025 / 2026
-CadMath03.bundle/Contents/Win64-2024/   .NET Framework 4.8 ← 2024
-CadMath03-2024.bundle/                  2024 专用（ApplicationPlugins 全局安装用）
+CadMath03.bundle/Contents/Win64/        .NET 8              ← 2025 / 2026（编译基准 25.1）
+CadMath03.bundle/Contents/Win64-2024/   .NET Framework 4.8  ← 2021 ~ 2024（编译基准 24.3）
+CadMath03.bundle/Contents/Win64-2020/   .NET Framework 4.8  ← 2020（编译基准 23.1）
+CadMath03-2024.bundle/                  2021–2024 专用（ApplicationPlugins 全局安装用）
+CadMath03-2020.bundle/                  2020 专用（同上）
 ```
 
 `setup.json` 里的 `hosts[]` 描述这个映射：
@@ -227,28 +230,31 @@ CadMath03-2024.bundle/                  2024 专用（ApplicationPlugins 全局�
   { "series": ["R25.0", "R25.1"], "runtime": "net8.0-windows",
     "entry": "Contents/Win64/CadMath03.dll", "bundle": "CadMath03.bundle" },
   { "series": ["R24.0", "R24.1", "R24.2", "R24.3"], "runtime": "net48",
-    "entry": "Contents/Win64-2024/CadMath03.dll", "bundle": "CadMath03-2024.bundle" }
+    "entry": "Contents/Win64-2024/CadMath03.dll", "bundle": "CadMath03-2024.bundle" },
+  { "series": ["R23.1"], "runtime": "net48",
+    "entry": "Contents/Win64-2020/CadMath03.dll", "bundle": "CadMath03-2020.bundle" }
 ]
 ```
 
 安装时对每个实例做两件事：
 
-1. 按 `adapters[].cadSeries` 选适配器（2024 只有 `legacy-r24` 能匹配）；
+1. 按 `adapters[].cadSeries` 选适配器（2024 只有 `legacy-r24` 能匹配；2020 只有 `legacy-r23`）；
 2. 按实例的系列从 `hosts[]` 选入口 DLL，注册的 `LOADER` 指向该入口。
 
 **找不到对应宿主就报错停止**（`发行包没有为 R24.3 提供宿主。`），绝不回落到 `Win64` —— 那会把
-.NET 8 的程序集塞给 2024，加载时直接 `BadImageFormatException`。
+程序集塞给不匹配的 CLR，加载时直接 `BadImageFormatException`。
 
 状态文件 `state.json` 的每个实例多记一个 `entry` 字段，卸载和诊断时可以据此知道当时装的是哪一代。
 
 ### 实验包（验证尚未开放的版本）
 
 0.4.3 起 `legacy-r24`（AutoCAD 2024）的状态是 `host-tested`，正式包直接支持它。
-实验包机制保留下来，供以后接入更老的版本（2023 及以前）或在新版本上先做小范围验证：
+0.4.4 新增的 `legacy-r23`（AutoCAD 2020）目前是 `planned`：正式包会拒绝把它装到 2020 上，
+要用实验包才能装。实验包机制同时保留给以后接入更老的版本（2023 及以前）：
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File build\build.ps1 -Experimental
-# → dist/CadMath-InlineMath-<版本>-experimental-2024.zip（所有 planned 适配器被提升为 built）
+# → dist/CadMath-InlineMath-<版本>-experimental.zip（所有 planned 适配器被提升为 built）
 ```
 
 验证者装好后跑 `CM3PROBE`，输出里 `host=` `clr=` `adapter=` `binding=` 与焦点类型齐全；把那段连同

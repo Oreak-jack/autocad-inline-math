@@ -1,10 +1,10 @@
-﻿<Project>
+<Project>
 
   <PropertyGroup>
     <!-- 唯一版本号：程序集版本、安装包清单、CM3STATUS 都从这里来。 -->
-    <Version>0.4.3</Version>
-    <AssemblyVersion>0.4.3.0</AssemblyVersion>
-    <FileVersion>0.4.3.0</FileVersion>
+    <Version>0.4.4</Version>
+    <AssemblyVersion>0.4.4.0</AssemblyVersion>
+    <FileVersion>0.4.4.0</FileVersion>
 
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
@@ -15,6 +15,15 @@
 
     <!-- AutoCAD 托管引用目录；构建适配器时需要，例如 -p:AcadDir="D:\AutoCAD 2026" -->
     <AcadDir Condition="'$(AcadDir)' == ''">$(ACAD_REFERENCE_DIR)</AcadDir>
+
+    <!--
+      官方 NuGet 引用版本（只编译、不复制）：
+        AcadSdkVersion        .NET 8 宿主：25.1.0 = AutoCAD 2026；想同时覆盖 2025 可改成 25.0.1。
+        AcadLegacySdkVersion  .NET Framework 宿主：24.3.0 = AutoCAD 2021–2024；23.1.0 = AutoCAD 2020。
+      改这两个属性即可换编译基准，不必逐个项目改 csproj。
+    -->
+    <AcadSdkVersion Condition="'$(AcadSdkVersion)' == ''">25.1.0</AcadSdkVersion>
+    <AcadLegacySdkVersion Condition="'$(AcadLegacySdkVersion)' == ''">24.3.0</AcadLegacySdkVersion>
   </PropertyGroup>
 
 </Project>

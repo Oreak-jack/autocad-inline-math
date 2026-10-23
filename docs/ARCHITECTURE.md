@@ -227,10 +227,10 @@ v0.3.3 的 541 条解析断言与 45 条路由断言**原样搬过来**当作回
 - **`ApplicationPlugins` 旧式安装**：不在注册表里、被所有 CAD 版本共享，安装器只能"移到备份"而无法按实例管理。
 ---
 
-## 10. 两代 CLR 宿主（0.4.2）
+## 10. 多代 CLR 宿主（0.4.2 起）
 
-AutoCAD 2024 是 .NET Framework 4.7/4.8，2025/2026 是 .NET 8。一个插件 DLL 不可能同时被两个运行时加载，
-所以在**同一个发行包**里放两代宿主，由安装器按实例选择。
+AutoCAD 2020 / 2021–2024 是 .NET Framework 4.7/4.8，2025/2026 是 .NET 8。一个插件 DLL 不可能同时被两个运行时加载，
+所以在**同一个发行包**里放多代宿主，由安装器按实例选择（0.4.4 起共三份：`Win64`、`Win64-2024`、`Win64-2020`）。
 
 ### 分层上的变化
 
@@ -238,24 +238,29 @@ AutoCAD 2024 是 .NET Framework 4.7/4.8，2025/2026 是 .NET 8。一个插件 DL
   测试工程与 Shell 都不必为它做条件编译。`record`/`init` 所需的 `IsExternalInit` 由 `IsExternalInit.cs` 补上，
   JSON 读取换成自带的 `Json.cs`（`System.Text.Json` 在 netstandard2.0 上不可用）。
 - 拦截逻辑从 `CadMath.Adapter.Modern` 抽到 **`src/CadMath.Adapter.Shared/KeystrokeAdapter.cs`**（无独立工程，
-  由两个适配器用 `<Compile Include>` 链接）。适配器工程变成两行薄壳：只需给出自己的 `Id`。
-- `CadMath.Shell` 多目标：`net8.0-windows;net48`。差异只在两处——适配器装载方式
+  由三个适配器用 `<Compile Include>` 链接）。适配器工程变成两行薄壳：只需给出自己的 `Id`。
+- `CadMath.Shell` 多目标：`net8.0-windows;net48`，同一个工程按 `$(AcadSdkVersion)` / `$(AcadLegacySdkVersion)`
+  编出 25.1 / 24.3 / 23.1 三份宿主。差异只在两处——适配器装载方式
   （net8 用可卸载的 `AssemblyLoadContext`，net48 用 `Assembly.LoadFrom` + `AssemblyResolve` 把
   `CadMath.Core`/`CadMath.Abstractions` 指回 Shell 已加载的一份，避免类型身份分裂）。
 - 引用来自**官方 NuGet**（`AutoCAD.NET` / `.Model` / `.Core`），不再依赖本机安装路径：
-  25.1.0 供 .NET 8、24.3.0 供 .NET Framework 4.8，都带 `ExcludeAssets="runtime"`，不会把 Autodesk 的 DLL 打进去。
+  25.1.0 供 .NET 8、24.3.0 与 23.1.0 供 .NET Framework 4.8，都带 `ExcludeAssets="runtime"`，不会把 Autodesk 的 DLL 打进去。
+- `build.ps1` 对同一工程切换 SDK 版本时必须加 `-t:Rebuild`，否则中间产物会复用上一轮的引用。
 
 ### 发行清单的变化
 
-`setup.json` 新增 `hosts[]`（系列 → 入口 DLL + 运行时），`files[]` 覆盖两个 bundle。
+`setup.json` 新增 `hosts[]`（系列 → 入口 DLL + 运行时），`files[]` 覆盖全部 bundle。
 安装器据此给每个实例写不同的 `LOADER`，并在找不到对应宿主时**直接失败**而不是回落。
 
 ### 代价与边界
 
-- 2024 的兼容性先由**编译期**确认：`UIBindings.CommandEditorManager.ActiveEditor.PromptAndInput.InputBuffer`、
-  `ReplaceInputQueue`、`OnSetSelectedTextQueue`、`ViewModel.CommandLine.CommandLineTextBox` 在 24.3 上都编译通过；
-  运行期行为（焦点判定、输入队列刷新时机）已于 0.4.3 在真实 AutoCAD 2024 上验证，`legacy-r24` 状态为 `host-tested`。
-- 打包体积翻倍（两个宿主各自带一份 Core/Abstractions）。换取的是"一个 zip 通吃 2024–2026"，
-  以及 2024 上不需要用户另装 .NET 8 运行时。
-- 共享源码是**编译期复用**而不是运行期复用：`KeystrokeAdapter.cs` 被两个适配器工程各编译一次，
+- 各代兼容性先由**编译期**确认：`UIBindings.CommandEditorManager.ActiveEditor.PromptAndInput.InputBuffer`、
+  `ReplaceInputQueue`、`OnSetSelectedTextQueue`、`ViewModel.CommandLine.CommandLineTextBox` 在 24.3 与 23.1 上都编译通过。
+  运行期行为：2024 已于 0.4.3 在真实 AutoCAD 上验证（`legacy-r24` = `host-tested`）；
+  2020 目前只有编译与安装流程验证（`legacy-r23` = `planned`，需实验包）。
+- 打包体积随宿主数量线性增长（每个宿主各带一份 Core/Abstractions）。换取的是"一个 zip 通吃 2020–2026"，
+  以及老版本上不需要用户另装 .NET 8 运行时。
+- 共享源码是**编译期复用**而不是运行期复用：`KeystrokeAdapter.cs` 被每个适配器工程各编译一次，
   若某一代 API 发生签名变化，编译会立刻断，而不是运行时才炸。
+- 官方兼容表只保证"用某版 SDK 编的程序集能跑特定范围"（24.3 → 2021–2024、25.0 → 2025–2026）。
+  2020 的 SDK（23.1）没有出现在 2024 的兼容表里，所以 2020 只能独立编一份宿主，不能靠 24.3 产物向下兼容。

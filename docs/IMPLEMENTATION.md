@@ -161,6 +161,7 @@ PreTranslateMessage(msg)
 ## 6. 遗留
 
 - **R24 适配器**：`legacy-r24` 在 0.4.2 落地为真实实现（`KeystrokeAdapter` 共享源码 + `AutoCAD.NET 24.3.0`），0.4.3 在真实 AutoCAD 2024 上验证通过，状态为 `host-tested`。它需要 net48 宿主与单独的入口目录（`Contents/Win64-2024`），不能靠改版本号复用。
+- **R23 适配器（2020）**：0.4.4 用 `AutoCAD.NET 23.1.0` 编出第三份宿主（`Contents/Win64-2020`）。共享源码在 23.1 上编译通过，安装器按 `hosts[]` 为 R23.1 实例注册 `Win64-2020\CadMath03.dll`，隔离环境已跑通安装/卸载。状态暂为 `planned`，需用实验包装机验证后改 `host-tested`。
 - **面板输入**：目前只认底部命令行。要支持浮动命令行，需要识别 `Autodesk.AutoCAD.Windows.Palette` 里的编辑框，属于新适配器能力，不是 Shell 的事。
 - **去重策略的边界**：依赖 `WM_KEYDOWN` 先于 `WM_CHAR` 到达。若某个版本顺序不同，`_consumedKeyDownKey` 不会命中，表现为重复改写——日志里成对的 `replacement_requested` 就是信号，应优先查这里。
 - **构建区间匹配**：`setup.json` 的 `buildRange` 留空，只按版本系列匹配；等有实测可用区间再填，填了就比 `planned` 更严格。

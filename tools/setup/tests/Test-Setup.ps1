@@ -91,25 +91,31 @@ try {
     $logger.Quiet = $true
     Write-Output ('  日志：' + (Get-LogPath))
 
-    # 假注册表：一个 R25.1 实例（指向真实 AutoCAD 2026 目录，用来读构建号）+ 一个 R24.3 实例。
+    # 假注册表：一个 R25.1 实例（指向真实 AutoCAD 2026 目录，用来读构建号）+ 一个 R24.3 实例 + 一个 R23.1（2020）实例。
     $product25 = Join-Path $regRoot 'R25.1\ACAD-9101:804'
     $product24 = Join-Path $regRoot 'R24.3\ACAD-9010:409'
+    $product23 = Join-Path $regRoot 'R23.1\ACAD-D001:804'
     New-Item -Path $product25 -Force | Out-Null
     New-Item -Path ($product25 + '\Profiles\<<未命名配置>>\Variables') -Force | Out-Null
     Set-ItemProperty -Path ($product25 + '\Profiles\<<未命名配置>>\Variables') -Name TRUSTEDPATHS -Value 'C:\Existing\Path'
     New-Item -Path $product24 -Force | Out-Null
+    New-Item -Path $product23 -Force | Out-Null
     $machine25 = Join-Path $machineRoot 'R25.1\ACAD-9101:804'
     $machine24 = Join-Path $machineRoot 'R24.3\ACAD-9010:409'
+    $machine23 = Join-Path $machineRoot 'R23.1\ACAD-D001:804'
     New-Item -Path $machine25 -Force | Out-Null
     New-Item -Path $machine24 -Force | Out-Null
+    New-Item -Path $machine23 -Force | Out-Null
     Set-ItemProperty -Path $machine25 -Name AcadLocation -Value 'D:\AutoCAD 2026\'
     Set-ItemProperty -Path $machine24 -Name AcadLocation -Value 'C:\Program Files\Autodesk\AutoCAD 2024\'
+    Set-ItemProperty -Path $machine23 -Name AcadLocation -Value 'C:\Program Files\Autodesk\AutoCAD 2020\'
     Write-Output '  假注册表已建立'
 
     $scan = Invoke-EnvironmentScan -RegistryRoot $regRoot -MachineRegistryRoot $machineRoot -AppsRoot $appsRoot -StateRoot $stateRoot
     $setup = Read-SetupManifest -Path $SetupJson
     $instance25 = @($scan.Instances | Where-Object { $_.Release -eq 'R25.1' })[0]
     $instance24 = @($scan.Instances | Where-Object { $_.Release -eq 'R24.3' })[0]
+    $instance23 = @($scan.Instances | Where-Object { $_.Release -eq 'R23.1' })[0]
 
     Write-Host ''
     Write-Host '=== 发行清单' -ForegroundColor Cyan
@@ -144,15 +150,18 @@ try {
         $m = Select-AdapterForInstance -Setup $setup -Instance $instance25 -Architecture 'x64'
         $m.Status -eq 'matched' -and $m.Adapter.id -eq 'modern-r25'
     }
-    Check '2024 实例被拒绝且给出原因' {
+    Check '2024 实例匹配到 legacy-r24（0.4.3 起转为正式支持）' {
         $m = Select-AdapterForInstance -Setup $setup -Instance $instance24 -Architecture 'x64'
-        $reasons = @($m.Rejections | ForEach-Object { $_.Reason })
-        $m.Status -eq 'none' -and ($reasons -contains 'series-mismatch') -and ($reasons -contains 'status-planned')
+        $m.Status -eq 'matched' -and $m.Adapter.id -eq 'legacy-r24'
     }
-    Check '宿主按 CAD 系列选择入口 DLL（2025/2026 走 .NET 8，2024 走 .NET Framework）' {
+    Check '宿主按 CAD 系列选择入口 DLL（2025/2026 走 .NET 8，2021–2024 走 Win64-2024，2020 走 Win64-2020）' {
         $h25 = Get-HostForSeries -Setup $setup -Series 'R25.1'
         $h24 = Get-HostForSeries -Setup $setup -Series '24.3'
-        $h25.entry -eq 'Contents/Win64/CadMath03.dll' -and $h24.entry -eq 'Contents/Win64-2024/CadMath03.dll' -and $null -eq (Get-HostForSeries -Setup $setup -Series 'R23.0')
+        $h23 = Get-HostForSeries -Setup $setup -Series 'R23.1'
+        $h25.entry -eq 'Contents/Win64/CadMath03.dll' -and
+            $h24.entry -eq 'Contents/Win64-2024/CadMath03.dll' -and
+            $h23.entry -eq 'Contents/Win64-2020/CadMath03.dll' -and
+            $null -eq (Get-HostForSeries -Setup $setup -Series 'R23.0')
     }
     Check '清单拒绝重复的宿主 series' {
         $bad = Join-Path $root 'dup-host.json'
@@ -164,6 +173,29 @@ try {
     Check '2024 适配器在实验许可下可匹配' {
         $m = Select-AdapterForInstance -Setup $setup -Instance $instance24 -Architecture 'x64' -AllowExperimental
         $m.Status -eq 'matched' -and $m.Adapter.id -eq 'legacy-r24'
+    }
+    Check '2020 实例默认被拒绝（legacy-r23 是 planned），实验许可下可匹配' {
+        $plain = Select-AdapterForInstance -Setup $setup -Instance $instance23 -Architecture 'x64'
+        $plainReasons = @($plain.Rejections | ForEach-Object { $_.Reason })
+        $exp = Select-AdapterForInstance -Setup $setup -Instance $instance23 -Architecture 'x64' -AllowExperimental
+        $plain.Status -eq 'none' -and ($plainReasons -contains 'status-planned') -and
+            $exp.Status -eq 'matched' -and $exp.Adapter.id -eq 'legacy-r23'
+    }
+    Check '2020 安装后 LOADER 指向 Win64-2020，2026 仍指向 Win64' {
+        $expSetup = [IO.File]::ReadAllText($SetupJson, [Text.Encoding]::UTF8) | ConvertFrom-Json
+        foreach ($adapter in @($expSetup.adapters)) { if ($adapter.id -eq 'legacy-r23') { $adapter.status = 'built' } }
+        $expPath = Join-Path $root 'experimental-setup-2020.json'
+        [IO.File]::WriteAllText($expPath, ($expSetup | ConvertTo-Json -Depth 10), (New-Object Text.UTF8Encoding($true)))
+        $parsed = Read-SetupManifest -Path $expPath
+
+        $state23 = Join-Path $root 'state-2020'
+        $r23 = Install-CadMathPackage -Setup $parsed -SourcePath $BundleDir -Instances @($instance23) -StateRoot $state23 -Architecture 'x64'
+        $loader23 = if ($r23.Success) { $r23.Loader } else { '' }
+        $stateDoc = Read-InstallState -StateRoot $state23
+        $entry23 = if ($stateDoc.instances.Count -gt 0) { $stateDoc.instances[0].entry } else { '' }
+        $null = Uninstall-CadMathInstances -Instances @($instance23) -StateRoot $state23
+
+        $r23.Success -and ($loader23 -match 'Win64-2020\\CadMath03\.dll$') -and ($entry23 -eq 'Contents\Win64-2020\CadMath03.dll')
     }
     Check '2024 安装后 LOADER 指向 Win64-2024，2026 仍指向 Win64' {
         $expSetup = [IO.File]::ReadAllText($SetupJson, [Text.Encoding]::UTF8) | ConvertFrom-Json
@@ -257,7 +289,7 @@ try {
         $end = $r.Output.LastIndexOf('}')
         if ($start -lt 0 -or $end -le $start) { return $false }
         $parsed = $r.Output.Substring($start, $end - $start + 1) | ConvertFrom-Json
-        $r.ExitCode -eq 0 -and @($parsed.CadInstances).Count -eq 2
+        $r.ExitCode -eq 0 -and @($parsed.CadInstances).Count -eq 3
     }
     Check '安装到 2026 实例成功，注册项与负载就位' {
         $r = Invoke-Cli -Extra @('-Install', 'R25.1\ACAD-9101:804', '-Yes')
@@ -279,8 +311,8 @@ try {
         $r = Invoke-Cli -Extra @('-Install', 'R25.1\ACAD-9101:804', '-Yes')
         $r.ExitCode -eq 0
     }
-    Check '给 2024 安装会被拒绝，退出码 3' {
-        $r = Invoke-Cli -Extra @('-Install', 'R24.3\ACAD-9010:409', '-Yes')
+    Check '给 2020 安装会被拒绝（legacy-r23 仍是 planned），退出码 3' {
+        $r = Invoke-Cli -Extra @('-Install', 'R23.1\ACAD-D001:804', '-Yes')
         $r.ExitCode -eq 3 -and $r.Output -match '没有可用适配器'
     }
     Check '卸载 2026 实例成功并清理注册项' {

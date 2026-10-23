@@ -1,0 +1,33 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <RootNamespace>CadMath.Adapter.Legacy2020</RootNamespace>
+    <AssemblyName>CadMath.Adapter.Legacy2020</AssemblyName>
+    <Description>AutoCAD 2020（R23.1）输入拦截适配器：同一份源码，.NET Framework 4.7 时代编译。</Description>
+    <UseWPF>true</UseWPF>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CadMath.Abstractions\CadMath.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\CadMath.Adapter.Shared\**\*.cs" LinkBase="Shared" />
+  </ItemGroup>
+
+  <!-- AutoCAD 2020 的官方引用程序集（lib/net47 之前的版本）。只编译、不复制。
+       2020 只保证兼容 23.1（及 2019 的 23.0）编出来的程序集，所以单独出一个程序集。 -->
+  <ItemGroup>
+    <PackageReference Include="AutoCAD.NET" Version="23.1.0" ExcludeAssets="runtime" PrivateAssets="none" />
+    <PackageReference Include="AutoCAD.NET.Model" Version="23.1.0" ExcludeAssets="runtime" PrivateAssets="none" />
+    <PackageReference Include="AutoCAD.NET.Core" Version="23.1.0" ExcludeAssets="runtime" PrivateAssets="none" />
+  </ItemGroup>
+
+</Project>

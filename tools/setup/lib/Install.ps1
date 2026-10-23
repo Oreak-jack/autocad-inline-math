@@ -108,15 +108,16 @@ function Copy-BundleToPayload {
 }
 
 function Get-OwnedDirectories {
-    # 一个负载目录里可能有两代宿主（Win64 给 2025/2026，Win64-2024 给 2024），
-    # 只要目录存在就要把它的两个子目录都登记到 TRUSTEDPATHS，卸载时再精确移除。
+    # 一个负载目录里可能有多个宿主（Win64 给 2025/2026，Win64-2024 给 2021–2024，Win64-2020 给 2020），
+    # 只要目录存在，就把宿主目录与它的 Adapters 子目录都登记到 TRUSTEDPATHS，卸载时再精确移除。
     param([string]$PayloadDir)
     $result = New-Object System.Collections.Generic.List[string]
-    foreach ($name in @('Contents\Win64', 'Contents\Win64-2024')) {
-        $hostDir = Join-Path $PayloadDir $name
-        if (-not (Test-Path -LiteralPath $hostDir)) { continue }
-        $result.Add($hostDir)
-        $adapters = Join-Path $hostDir 'Adapters'
+    $contents = Join-Path $PayloadDir 'Contents'
+    if (-not (Test-Path -LiteralPath $contents)) { return $result.ToArray() }
+
+    foreach ($hostDir in @(Get-ChildItem -LiteralPath $contents -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'Win64*' } | Sort-Object Name)) {
+        $result.Add($hostDir.FullName)
+        $adapters = Join-Path $hostDir.FullName 'Adapters'
         if (Test-Path -LiteralPath $adapters) { $result.Add($adapters) }
     }
     return $result.ToArray()
@@ -130,10 +131,17 @@ function Get-RemovableDirectories {
     if ($PayloadDir) {
         foreach ($dir in (Get-OwnedDirectories -PayloadDir $PayloadDir)) { $result.Add($dir) }
     }
-    foreach ($bundleName in @('CadMath03.bundle', 'CadMath03-2024.bundle')) {
-        $hostDir = Join-Path (Get-ApplicationsRoot) ($bundleName + '\Contents\Win64')
-        $result.Add($hostDir)
-        $result.Add((Join-Path $hostDir 'Adapters'))
+    foreach ($bundleName in @('CadMath03.bundle', 'CadMath03-2024.bundle', 'CadMath03-2020.bundle')) {
+        $bundleDir = Join-Path (Get-ApplicationsRoot) $bundleName
+        foreach ($hostDir in @(Get-ChildItem -LiteralPath (Join-Path $bundleDir 'Contents') -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'Win64*' } | Sort-Object Name)) {
+            $result.Add($hostDir.FullName)
+            $adapters = Join-Path $hostDir.FullName 'Adapters'
+            if (Test-Path -LiteralPath $adapters) { $result.Add($adapters) }
+        }
+        # 0.3.x 时代恒为 Win64，即使目录已不存在也要把这两条历史路径登记进来，才能从 TRUSTEDPATHS 里清掉。
+        $legacyHost = Join-Path $bundleDir 'Contents\Win64'
+        $result.Add($legacyHost)
+        $result.Add((Join-Path $legacyHost 'Adapters'))
     }
     return $result.ToArray()
 }
@@ -507,13 +515,13 @@ function Uninstall-CadMathInstances {
 # 注册表零改动，跟 0.3.x 的老做法完全一致。
 
 function Get-GlobalBundlePaths {
-    # 全局模式可能装两份：CadMath03.bundle（2025/2026，.NET 8）与
-    # CadMath03-2024.bundle（2024，.NET Framework）。两者互不干扰。
+    # 全局模式可能装三份：CadMath03.bundle（2025/2026，.NET 8）、
+    # CadMath03-2024.bundle（2021–2024）与 CadMath03-2020.bundle（2020）。三者互不干扰。
     param([string]$AppsRoot)
     $root = $AppsRoot
     if ([string]::IsNullOrWhiteSpace($root)) { $root = Get-ApplicationsRoot }
     $list = New-Object System.Collections.Generic.List[object]
-    foreach ($name in @('CadMath03.bundle', 'CadMath03-2024.bundle')) {
+    foreach ($name in @('CadMath03.bundle', 'CadMath03-2024.bundle', 'CadMath03-2020.bundle')) {
         $list.Add([pscustomobject]@{ Name = $name; Path = (Join-Path $root $name) })
     }
     return $list.ToArray()
@@ -574,12 +582,14 @@ function Install-CadMathGlobalBundle {
                 throw ('安装包目录里没有 {0}。' -f $entry.Name)
             }
             if ($entry.Name -ne 'CadMath03.bundle') {
-                # 2024 那份的 ProductCode 与主包不同，只做结构性检查。
+                # 2024 / 2020 那两份的 ProductCode 与主包不同，只做结构性检查：
+                # 必须有 PackageContents.xml，且至少有一个 Contents\Win64*\CadMath03.dll 宿主体。
                 if (-not (Test-Path -LiteralPath (Join-Path $source 'PackageContents.xml'))) {
                     throw ('安装包目录里缺少 {0}\PackageContents.xml。' -f $entry.Name)
                 }
-                if (-not (Test-Path -LiteralPath (Join-Path $source 'Contents\Win64-2024\CadMath03.dll'))) {
-                    throw ('安装包目录里缺少 {0}\Contents\Win64-2024\CadMath03.dll。' -f $entry.Name)
+                $hostDlls = @(Get-ChildItem -LiteralPath (Join-Path $source 'Contents') -Recurse -File -Filter 'CadMath03.dll' -ErrorAction SilentlyContinue)
+                if ($hostDlls.Count -eq 0) {
+                    throw ('安装包目录里缺少 {0}\Contents\Win64*\CadMath03.dll。' -f $entry.Name)
                 }
             }
 

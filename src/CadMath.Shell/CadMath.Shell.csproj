@@ -26,16 +26,16 @@
 
   <!-- AutoCAD 2025/2026：官方 NuGet，只编译不复制。 -->
   <ItemGroup Condition="'$(TargetFramework)' == 'net8.0-windows'">
-    <PackageReference Include="AutoCAD.NET" Version="25.1.0" ExcludeAssets="runtime" />
-    <PackageReference Include="AutoCAD.NET.Model" Version="25.1.0" ExcludeAssets="runtime" />
-    <PackageReference Include="AutoCAD.NET.Core" Version="25.1.0" ExcludeAssets="runtime" />
+    <PackageReference Include="AutoCAD.NET" Version="$(AcadSdkVersion)" ExcludeAssets="runtime" />
+    <PackageReference Include="AutoCAD.NET.Model" Version="$(AcadSdkVersion)" ExcludeAssets="runtime" />
+    <PackageReference Include="AutoCAD.NET.Core" Version="$(AcadSdkVersion)" ExcludeAssets="runtime" />
   </ItemGroup>
 
-  <!-- AutoCAD 2024：官方 NuGet 的 net47 程序集。 -->
+  <!-- AutoCAD 2021–2024 / 2020：官方 NuGet 的 .NET Framework 程序集，用 -p:AcadLegacySdkVersion 选基准。 -->
   <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
-    <PackageReference Include="AutoCAD.NET" Version="24.3.0" ExcludeAssets="runtime" />
-    <PackageReference Include="AutoCAD.NET.Model" Version="24.3.0" ExcludeAssets="runtime" />
-    <PackageReference Include="AutoCAD.NET.Core" Version="24.3.0" ExcludeAssets="runtime" />
+    <PackageReference Include="AutoCAD.NET" Version="$(AcadLegacySdkVersion)" ExcludeAssets="runtime" />
+    <PackageReference Include="AutoCAD.NET.Model" Version="$(AcadLegacySdkVersion)" ExcludeAssets="runtime" />
+    <PackageReference Include="AutoCAD.NET.Core" Version="$(AcadLegacySdkVersion)" ExcludeAssets="runtime" />
   </ItemGroup>
 
   <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
