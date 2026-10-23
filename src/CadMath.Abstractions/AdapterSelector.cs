@@ -34,8 +34,8 @@ public static class AdapterSelector
         HostSeries host,
         Func<string, bool> assemblyExists)
     {
-        ArgumentNullException.ThrowIfNull(manifests);
-        ArgumentNullException.ThrowIfNull(assemblyExists);
+        if (manifests is null) throw new ArgumentNullException(nameof(manifests));
+        if (assemblyExists is null) throw new ArgumentNullException(nameof(assemblyExists));
 
         var candidates = new List<AdapterManifest>();
         var rejected = new List<RejectedAdapter>();

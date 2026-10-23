@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ApplicationPackage SchemaVersion="1.0" AutodeskProduct="AutoCAD" Name="CadMath03-2024" AppVersion="__CADMATH_VERSION__" Description="Arithmetic in native bottom command line (AutoCAD 2024)" Author="CadMath" ProductCode="{6F1C6E2B-0D4E-4E39-9A8C-2F6C6F0E5D21}" UpgradeCode="{0937D725-1309-48F0-A258-BC54916D174A}">
+ <CompanyDetails Name="CadMath" />
+ <!-- 2024 及更早：.NET Framework 4.8 宿主。与 R25 那份 bundle 分开，避免一个 bundle 塞两代 CLR。 -->
+ <Components>
+  <RuntimeRequirements OS="Win64" Platform="AutoCAD" SeriesMin="R24.0" SeriesMax="R24.3" />
+  <ComponentEntry AppName="CadMath03-2024" AppType=".Net" Version="__CADMATH_VERSION__" ModuleName="./Contents/Win64-2024/CadMath03.dll" LoadOnAutoCADStartup="True" />
+ </Components>
+</ApplicationPackage>

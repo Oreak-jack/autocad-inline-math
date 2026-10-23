@@ -34,4 +34,34 @@ internal static class HostProbe
 
         return HostSeries.FromVersion(typeof(Autodesk.AutoCAD.ApplicationServices.Application).Assembly.GetName().Version);
     }
+
+    /// <summary>诊断用：把关键宿主模块的名字与版本拼成一行（缺哪个就直接写 missing）。</summary>
+    public static string DescribeModules()
+    {
+        var names = new[] { "acad.exe", "acmgd.dll", "accoremgd.dll", "acdbmgd.dll" };
+        var parts = new List<string>();
+
+        try
+        {
+            foreach (var name in names)
+            {
+                ProcessModule? found = null;
+                foreach (ProcessModule module in Process.GetCurrentProcess().Modules)
+                {
+                    if (!string.Equals(module.ModuleName, name, StringComparison.OrdinalIgnoreCase)) continue;
+                    found = module;
+                    break;
+                }
+
+                if (found is null) parts.Add(name + "=missing");
+                else parts.Add(name + "=" + (found.FileVersionInfo?.FileVersion ?? "?"));
+            }
+        }
+        catch (Exception ex)
+        {
+            parts.Add("modules=<" + ex.GetType().Name + ">");
+        }
+
+        return string.Join("; ", parts);
+    }
 }

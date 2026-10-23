@@ -205,4 +205,4 @@ PreTranslateMessage(msg)
 | 崩溃恢复 | 手工造 journal + 挪走旧负载 | `Restore-PendingTransaction` 恢复版本与负载，journal 清除 |
 | 卸载 | `-Remove <实例>` | 注册项消失、`TRUSTEDPATHS` 回到原值、无实例引用时删 payload |
 | 安全 | CAD 运行中 | 拒绝安装并提示关闭 CAD |
-| 全部用例 | `tools\setup\tests\Test-Setup.ps1` | **通过 24 项，失败 0 项** |
+| 全部用例 | `tools\setup\tests\Test-Setup.ps1` | **通过 33 项，失败 0 项** |

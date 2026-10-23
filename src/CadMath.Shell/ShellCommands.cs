@@ -45,4 +45,58 @@ public static class ShellCommands
             LogFile.Write(Abstractions.LogLevel.Info, result);
         }
     }
+
+    /// <summary>
+    /// 诊断用：把"这套适配器在这个 CAD 里到底看到了什么"打印出来并写入日志。
+    /// 2024 适配器没有真机验证过，这一条命令就是让对方把现场贴回来的工具。
+    /// </summary>
+    [CommandMethod("CM3PROBE")]
+    public static void Probe()
+    {
+        var document = AcApp.DocumentManager.MdiActiveDocument;
+        var editor = document?.Editor;
+        if (editor is null) return;
+
+        var lines = new List<string>
+        {
+            "product=" + ProductInfo.Name + " " + ProductInfo.Version,
+            "clr=" + Environment.Version,
+            "host=" + (ShellApplication.Manager?.Host.ToString() ?? "?"),
+            "activeAdapter=" + (ShellApplication.Manager?.Active?.Id ?? "-"),
+            "hostModules=" + HostProbe.DescribeModules()
+        };
+
+        try
+        {
+            var focused = System.Windows.Input.Keyboard.FocusedElement;
+            lines.Add("focused=" + (focused?.GetType().FullName ?? "(null)"));
+        }
+        catch (System.Exception ex)
+        {
+            lines.Add("focused=<" + ex.GetType().Name + ">");
+        }
+
+        try
+        {
+            var editor_ = AcApp.UIBindings.CommandEditorManager.ActiveEditor;
+            var prompt = editor_?.PromptAndInput;
+            var buffer = prompt?.InputBuffer;
+            lines.Add("commandEditor=" + (editor_ is null ? "(null)" : "ok"));
+            lines.Add("promptAndInput=" + (prompt is null ? "(null)" : "ok"));
+            lines.Add("inputBuffer=" + (buffer is null ? "(null)" : "ok"));
+            if (buffer is not null) lines.Add("inputText=" + buffer.Text + " promptingForCommandName=" + buffer.IsPromptingForCommandName());
+        }
+        catch (System.Exception ex)
+        {
+            lines.Add("uibindings=<" + ex.GetType().Name + ": " + ex.Message + ">");
+        }
+
+        foreach (var line in lines)
+        {
+            editor.WriteMessage("\n" + line);
+            LogFile.Write(Abstractions.LogLevel.Info, "probe " + line);
+        }
+
+        editor.WriteMessage("\n");
+    }
 }

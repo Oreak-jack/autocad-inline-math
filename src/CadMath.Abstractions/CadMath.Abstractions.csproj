@@ -1,7 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
     <RootNamespace>CadMath.Abstractions</RootNamespace>
     <AssemblyName>CadMath.Abstractions</AssemblyName>
     <Description>契约层：提示类型、判定结果、适配器接口、清单模型、宿主版本与选择算法。零依赖，也不依赖任何 AutoCAD 程序集。</Description>

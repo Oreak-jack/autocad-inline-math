@@ -1,7 +1,8 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0</TargetFramework>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <LangVersion>latest</LangVersion>
     <RootNamespace>CadMath.Core</RootNamespace>
     <AssemblyName>CadMath.Core</AssemblyName>
     <Description>纯计算引擎：表达式解析、坐标输入、输入判定。只依赖契约层，不依赖任何 AutoCAD 程序集。</Description>

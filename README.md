@@ -1,21 +1,21 @@
-﻿# AutoCAD Inline Math
+# AutoCAD Inline Math
 
 [![tests](https://github.com/Oreak-jack/autocad-inline-math/actions/workflows/tests.yml/badge.svg)](https://github.com/Oreak-jack/autocad-inline-math/actions/workflows/tests.yml)
 
 在 AutoCAD 命令行里直接写算式：`100-30` 回车就是 `70`，`@100-30,0` 就是相对坐标 `@70,0`。
 支持长度、角度、坐标等所有"提示输入"的场景，不需要记命令、不需要开计算器、不跳出 CAD。
 
-当前版本 **0.4.1**，支持 AutoCAD 2025 / 2026（R25.0 / R25.1）。用命令行安装器 `CadMath-Setup.cmd` 安装、更新、卸载，见 [docs/INSTALLER.md](docs/INSTALLER.md)。
+当前版本 **0.4.2**，支持 AutoCAD 2025 / 2026（R25.0 / R25.1，已真机验证）；AutoCAD 2024（R24.x，.NET Framework 4.8）有**实验版**支持，见下文。用命令行安装器 `CadMath-Setup.cmd` 安装、更新、卸载，见 [docs/INSTALLER.md](docs/INSTALLER.md)。
 
 ---
 
-## 0.4.1 与 0.3.3 的关系
+## 0.4.x 与 0.3.3 的关系
 
 0.3.3 是一个 155 行的 `Plugin.cs` 同时兼任程序集入口、命令、键盘拦截、状态机、日志和焦点探测，外加手工打包脚本和一个 470 行、只认全局 `ApplicationPlugins` 的 PowerShell 安装器。能用，但改一处要读全部。
 
-0.4.x 把同样的功能按职责拆开。0.4.0 先只做拆分、拿掉安装器；0.4.1 把安装器以**命令行工具 + 按版本注册**的形式接回来：
+0.4.x 把同样的功能按职责拆开。0.4.0 只做拆分、拿掉安装器；0.4.1 把安装器以**命令行工具 + 按版本注册**的形式接回来；0.4.2 让一套发行包同时容纳两代 CLR 宿主（.NET 8 给 2025/2026，.NET Framework 4.8 给 2024）：
 
-| | 0.3.3 | 0.4.1 |
+| | 0.3.3 | 0.4.2 |
 | --- | --- | --- |
 | 计算与判定 | `Expression.cs` + `InputPolicy.cs` 被测试工程直接编译 | 独立的 `CadMath.Core` / `CadMath.Abstractions` 程序集 |
 | 键盘拦截 | `Plugin.cs` 里所有东西混在一起 | `CadMath.Adapter.Modern`（唯一接触 AutoCAD 输入管线的模块） |
@@ -32,7 +32,7 @@
 
 ```
 CadMath.sln
-Directory.Build.props          版本号的唯一来源（0.4.1）
+Directory.Build.props          版本号的唯一来源（0.4.2）
 adapters/adapters.json         适配器清单（随包分发，运行时选择用）
 bundle/PackageContents.xml     包描述模板，打包时注入版本
 build/build.ps1                一条命令产出 bundle + zip + setup.json + SHA256SUMS.txt
@@ -43,7 +43,7 @@ tools/setup/                   命令行安装器（PowerShell 5.1）
   CadMath-Setup.cmd            入口
   CadMath-Setup.ps1            菜单与流程
   lib/                         扫描、清单、注册表、安装/回滚、发行版访问
-  tests/Test-Setup.ps1         安装器自动化测试（28 项）
+  tests/Test-Setup.ps1         安装器自动化测试（33 项）
 src/
   CadMath.Abstractions/        契约层：PromptKind、Decision/Conversion、ICadAdapter、清单模型、HostSeries、选择算法
   CadMath.Core/                纯计算：表达式求值、坐标转换、输入判定（不引用任何 AutoCAD 程序集）
@@ -87,10 +87,29 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\CadMath-Setup.ps
 手动安装仍然可行（等于 0.4.0 的做法）：关闭 AutoCAD → 把 `dist\CadMath03.bundle` 复制到
 `%APPDATA%\Autodesk\ApplicationPlugins\CadMath03.bundle` → 启动。
 
+### AutoCAD 2024（实验版）
+
+2024 用的是 **.NET Framework 4.8**，与 2025/2026 的 .NET 8 不兼容，所以包里带了两代宿主：
+`Contents/Win64`（.NET 8）与 `Contents/Win64-2024`（.NET Framework 4.8）。安装器按检测到的实例系列
+选择对应入口，两个版本可以同时装、互不影响。
+
+2024 的适配器目前状态是 `planned`——正式包**默认不装**它（怕装上一个跑不起来的插件）。
+要给测试者验证时，用实验包（`build\build.ps1 -Experimental`，或直接发
+`dist\CadMath-InlineMath-0.4.2-experimental-2024.zip`），它的 `setup.json` 里 `legacy-r24` 是 `built`：
+
+```powershell
+# 关掉 2024 → 解压实验包 → 在解压目录里执行
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\CadMath-Setup.ps1 -Install 'R24.3\ACAD-9010:409' -Yes
+```
+
+装完在 2024 命令行里跑 `CM3PROBE`，它会把宿主 release、acmgd 版本、适配器、绑定解析结果和焦点类型
+一次性打印出来（也写进日志），把那段输出发回来即可判定成功与否。验证通过后把
+`adapters/adapters.json` 里 `legacy-r24` 的 `status` 改成 `host-tested`，正式包就能直接装了。
+
 装好后 AutoCAD 命令行会出现：
 
 ```
-CadMath 0.4.1 底部命令栏计算已启用。关闭：CM3OFF；状态：CM3STATUS。
+CadMath 0.4.2 底部命令栏计算已启用。关闭：CM3OFF；状态：CM3STATUS。
 ```
 
 ---
@@ -103,6 +122,7 @@ CadMath 0.4.1 底部命令栏计算已启用。关闭：CM3OFF；状态：CM3STA
 | `CM3OFF` | 暂停拦截，输入原样交给 CAD |
 | `CM3STATUS` | 当前开关、活动适配器、宿主版本、已替换次数、最后一次错误、日志路径 |
 | `CM3CHECK` | 读上一次选中 LINE 的长度（核对算式结果是否真的落到几何上） |
+| `CM3PROBE` | 打印宿主与适配器诊断（release、acmgd 版本、绑定解析、焦点类型），排查新版本适配问题时用 |
 
 ---
 
@@ -142,32 +162,43 @@ CadMath 0.4.1 底部命令栏计算已启用。关闭：CM3OFF；状态：CM3STA
 
 ## 构建
 
-前置：.NET SDK 8，以及 AutoCAD 2025/2026 的托管程序集。
+前置：.NET SDK 8（自带 `net48` 目标包）。AutoCAD 的托管程序集**不需要**本机安装——两代引用都来自官方 NuGet 包（`AutoCAD.NET` 25.1.0 供 .NET 8、24.3.0 供 .NET Framework 4.8）。
 
 ```powershell
-powershell -ExecutionPolicy Bypass -File build\build.ps1 -AcadDir "D:\AutoCAD 2026"
+powershell -ExecutionPolicy Bypass -File build\build.ps1
+
+# 给 2024 测试者打的实验包（把 legacy-r24 的 status 从 planned 提升为 built）
+powershell -ExecutionPolicy Bypass -File build\build.ps1 -Experimental
 ```
 
 产物：
 
 ```
-dist/CadMath03.bundle/                可直接复制的包
-  PackageContents.xml                 包描述（版本已注入）
-  BUILD-INFO.txt                      构建时间、配置、版本
-  Contents/Win64/
+dist/CadMath03.bundle/                主包（两代宿主放在同一个包里）
+  PackageContents.xml                 包描述（版本已注入，Series R25.0 ~ R25.1）
+  BUILD-INFO.txt                      构建时间、配置、版本、两代宿主的说明
+  Contents/Win64/                     2025 / 2026 · .NET 8
     CadMath03.dll                     Shell（程序集名沿用旧名）
     CadMath.Core.dll
     CadMath.Abstractions.dll
-    adapters.json
+    adapters.json                     运行时清单（只列 net8 适配器）
     Adapters/CadMath.Adapter.Modern.dll
-    Adapters/CadMath.Adapter.Legacy.dll
-dist/setup.json                       发行清单：版本、zip 校验值、逐文件 SHA-256、适配器状态
+  Contents/Win64-2024/                2024 · .NET Framework 4.8
+    CadMath03.dll                     （同一个程序集名，另一代宿主）
+    CadMath.Core.dll
+    CadMath.Abstractions.dll
+    adapters.json                     运行时清单（只列 net48 适配器）
+    Adapters/CadMath.Adapter.Legacy2024.dll
+dist/CadMath03-2024.bundle/           2024 专用包（ApplicationPlugins 全局安装用，Series R24.0 ~ R24.3）
+dist/setup.json                       发行清单：版本、hosts（系列→入口 DLL）、逐文件 SHA-256、适配器状态
 dist/tools/setup/                     安装器（随 zip 分发）
-dist/CadMath-InlineMath-0.4.1.zip     整包压缩（-NoZip 可跳过）：bundle + 安装器 + setup.json
-dist/SHA256SUMS.txt                   zip 的 SHA-256（旧安装器格式，便于人工核对）
+dist/CadMath-InlineMath-0.4.2.zip     整包压缩（-NoZip 可跳过）：两个 bundle + 安装器 + setup.json
+dist/CadMath-InlineMath-0.4.2-experimental-2024.zip
+                                      实验包：同上，但 legacy-r24 的状态是 built（可直接装 2024）
+dist/SHA256SUMS.txt                   zip 的 SHA-256（便于人工核对）
 ```
 
-版本号只写在 `Directory.Build.props`（`<Version>0.4.1</Version>`），程序和 `PackageContents.xml` 都从那里取；zip 名与 `setup.json` 里的版本也来自同一处。
+版本号只写在 `Directory.Build.props`（`<Version>0.4.2</Version>`），程序和 `PackageContents.xml` 都从那里取；zip 名与 `setup.json` 里的版本也来自同一处。
 
 两个本机会踩的坑，脚本事先规避了：
 
@@ -193,11 +224,11 @@ dotnet run --project tests\CadMath.Tests -c Release
 测试工程零 NuGet 依赖，直接跑在 `net8.0` 上，CI 不需要 Windows 或 AutoCAD。
 真实 CAD 里的行为（拦截、改写、几何落地）不在自动化范围内，靠人工冒烟和 `%TEMP%\CadMath03.log` 核对。
 
-安装器另有 24 项自动化测试（不会动真实安装：临时状态目录 + 假注册表根）：
+安装器另有 33 项自动化测试（不会动真实安装：临时状态目录 + 假注册表根）：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\tests\Test-Setup.ps1
-# 通过 24 项，失败 0 项
+# 通过 33 项，失败 0 项
 ```
 
 ---
@@ -228,21 +259,22 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\tests\Test-Setup
 
 新增一个 CAD 版本适配器：
 
-1. 建 `src/CadMath.Adapter.<名字>`，**只引用 `CadMath.Abstractions`** 和该版本的 `acmgd/acdbmgd/accoremgd`；
-2. 实现 `ICadAdapter`（`Id`、`TryStart(host, token, out error)`、`Stop()`），把宿主事件翻译成 `SubmitRequest(PromptKind, command, text)` 交给 `host.Evaluate`；
+1. 建 `src/CadMath.Adapter.<名字>`，**只引用 `CadMath.Abstractions`** 和该版本的 `acmgd/acdbmgd/accoremgd`（推荐直接用官方 NuGet 包，见 `CadMath.Adapter.Legacy2024.csproj`）；
+2. 实现 `ICadAdapter`（`Id`、`TryStart(host, token, out error)`、`Stop()`）——如果只是换一代 CAD，最省事的是继承 `src/CadMath.Adapter.Shared/KeystrokeAdapter.cs`（两个适配器共用同一份拦截逻辑，只传一个 `Id`）；
 3. 在 `adapters.json` 加一项，`series` 填目标版本；
 4. 跑 `build.ps1`，`Adapters/` 下会自动收进新 DLL。
 
-`legacy-r24` 是占位实现：接口、清单、装载都已打通，`TryStart` 直接返回"尚未实现"，所以在 2024 上会显示"未启用：…"而不会崩。
+`legacy-r24` 现在是真实实现：它链接 `KeystrokeAdapter.cs`，用 `AutoCAD.NET 24.3.0`（.NET Framework 4.8）编译，编译期已确认 2024 的 `UIBindings`/`CommandLineTextBox`/`ReplaceInputQueue` API 与 2025 一致；只是还没在真实 2024 上跑过，所以状态停在 `planned`。
 
 ---
 
 ## 日志与诊断
 
 - 路径：`%TEMP%\CadMath03.log`（超过 1 MB 停止写入）。
-- 关键行：`shell 0.4.1 start; host=R25.1`、`adapter modern-r25 active`、`replacement_requested 100-30 => 70 command=LINE msg=0x100`、`adapter failure, interception disabled`。
+- 关键行：`shell 0.4.2 start; host=R25.1`、`adapter modern-r25 active`、`replacement_requested 100-30 => 70 command=LINE msg=0x100`、`adapter failure, interception disabled`。
 - `CM3STATUS` 会输出开关状态、活动适配器、替换次数、最后一次错误、日志路径，以及被排除的适配器及原因。
 - 想在没有 CAD 的环境里验证探测逻辑，可设 `CADMATH_HOST_SERIES=R25.1`。
+- 在 2024 上排查问题先跑 `CM3PROBE`，它会打印宿主 release、acmgd 版本、适配器、绑定解析结果与焦点类型。
 
 ---
 
@@ -250,7 +282,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\tests\Test-Setup
 
 - 只支持底部命令行输入，不支持浮动命令行面板与对话框。
 - 适配器抛异常时会**保护性关闭**拦截（fail closed），需手动 `CM3ON`；这样绝不会把错误输入塞进图形。
-- 真实适配器目前只有 R25.x；2024 及更早只有占位（`status=planned`，安装器会跳过该实例）。
+- 2025/2026 已真机验证；2024 的适配器已编译通过、逻辑与 2025 共用，但**尚未在真实 2024 上运行过**，正式包里 `status=planned`，只有实验包能装。
 - 安装器只认 `%LOCALAPPDATA%` 下自己的负载与 `HKCU` 注册；手工放进 `ApplicationPlugins` 的旧式安装会被识别为"旧式"，需要迁移一次才能按版本独立管理。
 - 更新只走 GitHub Releases，网络不可用时安装与卸载仍然可用。
 

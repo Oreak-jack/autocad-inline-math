@@ -55,7 +55,7 @@ public static class ExpressionParser
 
         private static double Check(double value)
         {
-            if (!double.IsFinite(value) || Math.Abs(value) > InputLimits.MaxMagnitude ||
+            if (!Ascii.IsFinite(value) || Math.Abs(value) > InputLimits.MaxMagnitude ||
                 (value != 0 && Math.Abs(value) < InputLimits.MinMagnitude))
             {
                 throw new ExpressionException(
@@ -124,15 +124,15 @@ public static class ExpressionParser
 
                 SkipSpace();
                 var start = _index;
-                while (_index < _text.Length && (char.IsAsciiDigit(_text[_index]) || _text[_index] == '.')) _index++;
+                while (_index < _text.Length && (Ascii.IsDigit(_text[_index]) || _text[_index] == '.')) _index++;
                 if (_index < _text.Length && (_text[_index] == 'e' || _text[_index] == 'E'))
                 {
                     _index++;
                     if (_index < _text.Length && (_text[_index] == '+' || _text[_index] == '-')) _index++;
-                    while (_index < _text.Length && char.IsAsciiDigit(_text[_index])) _index++;
+                    while (_index < _text.Length && Ascii.IsDigit(_text[_index])) _index++;
                 }
 
-                if (!double.TryParse(_text[start.._index], NumberStyles.Float, CultureInfo.InvariantCulture, out var number))
+                if (!double.TryParse(_text.Substring(start, _index - start), NumberStyles.Float, CultureInfo.InvariantCulture, out var number))
                 {
                     throw new ExpressionException(ErrorCodes.NumberExpected, "需要数字或括号表达式。");
                 }
@@ -160,4 +160,5 @@ public static class InputLimits
 
     /// <summary>非零结果的绝对值下限。</summary>
     public const double MinMagnitude = 1e-12;
+
 }

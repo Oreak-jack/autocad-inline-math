@@ -1,13 +1,16 @@
 <Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
-    <TargetFramework>net8.0-windows</TargetFramework>
+    <!-- 一套代码，两代 CLR：net8 给 AutoCAD 2025/2026，net48 给 2024 及更早。 -->
+    <TargetFrameworks>net8.0-windows;net48</TargetFrameworks>
     <RootNamespace>CadMath.Shell</RootNamespace>
     <AssemblyName>CadMath03</AssemblyName>
     <Description>插件宿主：生命周期、命令、配置、日志、适配器选择。不实现任何 CAD API 细节。</Description>
     <Platforms>x64</Platforms>
     <PlatformTarget>x64</PlatformTarget>
     <UseWindowsForms>false</UseWindowsForms>
+    <UseWPF>true</UseWPF>
+    <ImplicitUsings>enable</ImplicitUsings>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,28 +19,27 @@
   </ItemGroup>
 
   <ItemGroup>
-    <Reference Include="acmgd">
-      <HintPath>$(AcadDir)\acmgd.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="accoremgd">
-      <HintPath>$(AcadDir)\accoremgd.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-    <Reference Include="acdbmgd">
-      <HintPath>$(AcadDir)\acdbmgd.dll</HintPath>
-      <Private>false</Private>
-    </Reference>
-  </ItemGroup>
-
-  <ItemGroup>
     <None Include="..\..\adapters\adapters.json" Link="adapters.json">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
   </ItemGroup>
 
-  <Target Name="RequireAcadDir" BeforeTargets="ResolveAssemblyReferences" Condition="'$(AcadDir)' == ''">
-    <Error Text="未设置 AutoCAD 托管引用目录。请构建时传 -p:AcadDir=&quot;D:\AutoCAD 2026&quot;，或设置环境变量 ACAD_REFERENCE_DIR。" />
-  </Target>
+  <!-- AutoCAD 2025/2026：官方 NuGet，只编译不复制。 -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0-windows'">
+    <PackageReference Include="AutoCAD.NET" Version="25.1.0" ExcludeAssets="runtime" />
+    <PackageReference Include="AutoCAD.NET.Model" Version="25.1.0" ExcludeAssets="runtime" />
+    <PackageReference Include="AutoCAD.NET.Core" Version="25.1.0" ExcludeAssets="runtime" />
+  </ItemGroup>
+
+  <!-- AutoCAD 2024：官方 NuGet 的 net47 程序集。 -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+    <PackageReference Include="AutoCAD.NET" Version="24.3.0" ExcludeAssets="runtime" />
+    <PackageReference Include="AutoCAD.NET.Model" Version="24.3.0" ExcludeAssets="runtime" />
+    <PackageReference Include="AutoCAD.NET.Core" Version="24.3.0" ExcludeAssets="runtime" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+    <Reference Include="System.Net.Http" />
+  </ItemGroup>
 
 </Project>

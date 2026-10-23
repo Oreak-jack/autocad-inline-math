@@ -28,6 +28,9 @@ function Read-InstallState {
     if ($names -notcontains 'instances') {
         $state | Add-Member -MemberType NoteProperty -Name instances -Value @()
     }
+    if ($names -notcontains 'bundlePaths') {
+        $state | Add-Member -MemberType NoteProperty -Name bundlePaths -Value @()
+    }
     if ($state.mode -ne 'appplugins') { $state.mode = 'registration' }
     return $state
 }
@@ -76,12 +79,12 @@ function Resolve-BundleFromArchive {
 }
 
 function Test-BundleFiles {
-    param([string]$BundleRoot, $Files)
+    param([string]$PackageRoot, $Files)
     if ($Files -eq $null -or @($Files).Count -eq 0) {
         Write-Warn -Stage 'VERIFY' '发行清单没有 files 清单，跳过逐文件校验。'
         return
     }
-    $root = [IO.Path]::GetFullPath($BundleRoot).TrimEnd('\')
+    $root = [IO.Path]::GetFullPath($PackageRoot).TrimEnd('\')
     foreach ($file in @($Files)) {
         $relative = ([string]$file.path).Replace('/', '\')
         $path = [IO.Path]::GetFullPath((Join-Path $root $relative))
@@ -105,26 +108,33 @@ function Copy-BundleToPayload {
 }
 
 function Get-OwnedDirectories {
+    # 一个负载目录里可能有两代宿主（Win64 给 2025/2026，Win64-2024 给 2024），
+    # 只要目录存在就要把它的两个子目录都登记到 TRUSTEDPATHS，卸载时再精确移除。
     param([string]$PayloadDir)
     $result = New-Object System.Collections.Generic.List[string]
-    $win64 = Join-Path $PayloadDir 'Contents\Win64'
-    if (Test-Path -LiteralPath $win64) { $result.Add($win64) }
-    $adapters = Join-Path $win64 'Adapters'
-    if (Test-Path -LiteralPath $adapters) { $result.Add($adapters) }
+    foreach ($name in @('Contents\Win64', 'Contents\Win64-2024')) {
+        $hostDir = Join-Path $PayloadDir $name
+        if (-not (Test-Path -LiteralPath $hostDir)) { continue }
+        $result.Add($hostDir)
+        $adapters = Join-Path $hostDir 'Adapters'
+        if (Test-Path -LiteralPath $adapters) { $result.Add($adapters) }
+    }
     return $result.ToArray()
 }
 
 function Get-RemovableDirectories {
-    # 卸载时要清理的 TRUSTEDPATHS 条目：本次安装加入的两条 + 0.3.x 用 ApplicationPlugins 时注册的两条
+    # 卸载时要清理的 TRUSTEDPATHS 条目：本次安装加入的条目 + 0.3.x 用 ApplicationPlugins 时注册的条目
     # （升级/卸载后那些目录已经不存在，但用户配置里还留着无效路径）。
     param([string]$PayloadDir)
     $result = New-Object System.Collections.Generic.List[string]
     if ($PayloadDir) {
         foreach ($dir in (Get-OwnedDirectories -PayloadDir $PayloadDir)) { $result.Add($dir) }
     }
-    $legacy = Join-Path (Get-ApplicationsRoot) 'CadMath03.bundle\Contents\Win64'
-    $result.Add($legacy)
-    $result.Add((Join-Path $legacy 'Adapters'))
+    foreach ($bundleName in @('CadMath03.bundle', 'CadMath03-2024.bundle')) {
+        $hostDir = Join-Path (Get-ApplicationsRoot) ($bundleName + '\Contents\Win64')
+        $result.Add($hostDir)
+        $result.Add((Join-Path $hostDir 'Adapters'))
+    }
     return $result.ToArray()
 }
 
@@ -136,7 +146,8 @@ function Install-CadMathPackage {
         [Parameter(Mandatory)][string]$StateRoot,
         [string]$Architecture = 'x64',
         [string]$ZipSha256,
-        [switch]$IsUpdate
+        [switch]$IsUpdate,
+        [switch]$AllowExperimental
     )
     $transactionId = [guid]::NewGuid().ToString('N')
     $work = Join-Path $env:TEMP ('cadmath-setup-' + $transactionId)
@@ -174,7 +185,7 @@ function Install-CadMathPackage {
             $bundleSource = Resolve-BundleFromArchive -Zip $SourcePath -WorkRoot $work
         }
         $bundleInfo = Get-BundleInfo -Bundle $bundleSource
-        Test-BundleFiles -BundleRoot $bundleInfo.Bundle -Files $Setup.files
+        Test-BundleFiles -PackageRoot (Split-Path -Parent $bundleInfo.Bundle) -Files $Setup.files
         if ($bundleInfo.Version -ne $Setup.releaseVersion) {
             throw ('包版本 {0} 与发行清单 {1} 不一致。' -f $bundleInfo.Version, $Setup.releaseVersion)
         }
@@ -183,11 +194,25 @@ function Install-CadMathPackage {
 
         # 2. 逐实例匹配
         foreach ($instance in $targets) {
-            $match = Select-AdapterForInstance -Setup $Setup -Instance $instance -Architecture $Architecture
+            $match = Select-AdapterForInstance -Setup $Setup -Instance $instance -Architecture $Architecture -AllowExperimental:$AllowExperimental
             if ($match.Status -ne 'matched') {
                 throw ('{0}：{1}' -f $instance.Label, $(if ($match.Status -eq 'ambiguous') { $match.Error } else { '没有可用适配器（' + (Get-RejectionSummary -Rejections $match.Rejections) + '）' }))
             }
-            $plan.Add([pscustomobject]@{ Instance = $instance; Adapter = $match.Adapter })
+
+            # 入口 DLL 必须按实例的 CAD 版本决定：2024 用 .NET Framework 那份，2025/2026 用 .NET 8 那份。
+            # 清单没有 hosts（0.4.1 及更早的包）时退回旧行为。
+            $entry = $null
+            if ($Setup.PSObject.Properties['hosts'] -and $Setup.hosts -ne $null) {
+                $hostInfo = Get-HostForSeries -Setup $Setup -Series $instance.Series
+                if ($hostInfo -eq $null) {
+                    throw ('{0}：发行包没有为 {1} 提供宿主。' -f $instance.Label, $instance.Series)
+                }
+                $entry = ([string]$hostInfo.entry) -replace '/', '\'
+            } else {
+                $entry = $script:EntryAssembly
+            }
+
+            $plan.Add([pscustomobject]@{ Instance = $instance; Adapter = $match.Adapter; Entry = $entry })
         }
         Write-Info -Stage 'MATCH' ('计划安装到 {0} 个实例：{1}' -f $plan.Count, (($plan | ForEach-Object { $_.Instance.Label + ' → ' + $_.Adapter.id }) -join '；'))
 
@@ -237,15 +262,20 @@ function Install-CadMathPackage {
         $payloadStage = $null
         Invoke-FaultInjection -Point 'commit'
 
-        # 6. 注册每个实例
+        # 6. 注册每个实例（每个实例的 LOADER 指向自己那一代宿主的 CAD 程序集）
         $trusted = Get-OwnedDirectories -PayloadDir $payloadFinal
-        $loader = Join-Path $payloadFinal 'Contents\Win64\CadMath03.dll'
+        $firstLoader = $null
         foreach ($item in $plan) {
+            $loader = Join-Path $payloadFinal $item.Entry
+            if (-not (Test-Path -LiteralPath $loader)) {
+                throw ('负载里缺少 {0} 的宿主程序集：{1}' -f $item.Instance.Label, $item.Entry)
+            }
             $registration = Set-InstanceRegistration -Instance $item.Instance -Loader $loader -TrustedDirs $trusted
             if (-not (Test-InstanceRegistered -Instance $item.Instance -Loader $loader)) {
                 throw ('注册校验失败：{0}' -f $item.Instance.Label)
             }
-            Write-Info -Stage 'REGISTER' ('已注册 {0}（更新 {1} 个配置的 TRUSTEDPATHS）' -f $item.Instance.Label, $registration.ProfilesUpdated)
+            if (-not $firstLoader) { $firstLoader = $loader }
+            Write-Info -Stage 'REGISTER' ('已注册 {0}（{1}；更新 {2} 个配置的 TRUSTEDPATHS）' -f $item.Instance.Label, $item.Entry, $registration.ProfilesUpdated)
         }
         Invoke-FaultInjection -Point 'register'
 
@@ -260,10 +290,11 @@ function Install-CadMathPackage {
         }
         foreach ($item in $plan) {
             $entries.Add([pscustomobject]@{
-                instanceId = $item.Instance.Id
-                adapterId  = $item.Adapter.id
-                label      = $item.Instance.Label
-                loader     = $loader
+                instanceId  = $item.Instance.Id
+                adapterId   = $item.Adapter.id
+                label       = $item.Instance.Label
+                entry       = $item.Entry
+                loader      = (Join-Path $payloadFinal $item.Entry)
                 installedAt = (Get-Date -Format 'o')
             })
         }
@@ -286,7 +317,7 @@ function Install-CadMathPackage {
             Success  = $true
             Version  = $Setup.releaseVersion
             Payload  = $payloadFinal
-            Loader   = $loader
+            Loader   = $firstLoader
             Instances = $plan.ToArray()
             Rollback = 'not-needed'
         }
@@ -475,6 +506,19 @@ function Uninstall-CadMathInstances {
 # 由 AutoCAD 自己扫描加载。所有 CAD 版本共享同一份，不能按实例卸载 —— 换来的是
 # 注册表零改动，跟 0.3.x 的老做法完全一致。
 
+function Get-GlobalBundlePaths {
+    # 全局模式可能装两份：CadMath03.bundle（2025/2026，.NET 8）与
+    # CadMath03-2024.bundle（2024，.NET Framework）。两者互不干扰。
+    param([string]$AppsRoot)
+    $root = $AppsRoot
+    if ([string]::IsNullOrWhiteSpace($root)) { $root = Get-ApplicationsRoot }
+    $list = New-Object System.Collections.Generic.List[object]
+    foreach ($name in @('CadMath03.bundle', 'CadMath03-2024.bundle')) {
+        $list.Add([pscustomobject]@{ Name = $name; Path = (Join-Path $root $name) })
+    }
+    return $list.ToArray()
+}
+
 function Get-GlobalBundlePath {
     param([string]$AppsRoot)
     $root = $AppsRoot
@@ -514,35 +558,59 @@ function Install-CadMathGlobalBundle {
         if ($info.Version -ne [string]$Setup.releaseVersion) {
             throw ('安装包版本是 {0}，清单要求 {1}。' -f $info.Version, $Setup.releaseVersion)
         }
-        $null = Test-BundleFiles -BundleRoot $bundleRoot -Files $Setup.files
+        $null = Test-BundleFiles -PackageRoot (Split-Path -Parent $bundleRoot) -Files $Setup.files
         Write-Info -Stage 'VERIFY' ('包校验通过：{0} {1}' -f $info.Name, $info.Version)
 
-        $target = Get-GlobalBundlePath -AppsRoot $AppsRoot
-        $parent = Split-Path -Parent $target
-        $backupPath = $null
-        if (Test-Path -LiteralPath $target) {
-            $backup = Join-Path (Get-BackupRoot -StateRoot $StateRoot) ('appplugins-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
-            New-Item -ItemType Directory -Path $backup -Force | Out-Null
-            Move-Item -LiteralPath $target -Destination (Join-Path $backup 'CadMath03.bundle')
-            $backupPath = $backup
-            Write-Info -Stage 'BACKUP' ('旧 bundle 已移到：{0}' -f $backup)
-        }
+        $packageRoot = Split-Path -Parent $bundleRoot
+        $parent = Split-Path -Parent (Get-GlobalBundlePath -AppsRoot $AppsRoot)
         New-Item -ItemType Directory -Path $parent -Force | Out-Null
-        Copy-Item -LiteralPath $bundleRoot -Destination $target -Recurse -Force
-        if (-not (Test-Path -LiteralPath (Join-Path $target 'PackageContents.xml'))) {
-            throw ('复制后的目录里没有 PackageContents.xml：{0}' -f $target)
+
+        $installedPaths = New-Object System.Collections.Generic.List[string]
+        $backupPath = $null
+        foreach ($entry in (Get-GlobalBundlePaths -AppsRoot $AppsRoot)) {
+            $source = Join-Path $packageRoot $entry.Name
+            if (-not (Test-Path -LiteralPath $source)) {
+                if ($entry.Name -ne 'CadMath03.bundle') { continue }
+                throw ('安装包目录里没有 {0}。' -f $entry.Name)
+            }
+            if ($entry.Name -ne 'CadMath03.bundle') {
+                # 2024 那份的 ProductCode 与主包不同，只做结构性检查。
+                if (-not (Test-Path -LiteralPath (Join-Path $source 'PackageContents.xml'))) {
+                    throw ('安装包目录里缺少 {0}\PackageContents.xml。' -f $entry.Name)
+                }
+                if (-not (Test-Path -LiteralPath (Join-Path $source 'Contents\Win64-2024\CadMath03.dll'))) {
+                    throw ('安装包目录里缺少 {0}\Contents\Win64-2024\CadMath03.dll。' -f $entry.Name)
+                }
+            }
+
+            if (Test-Path -LiteralPath $entry.Path) {
+                $backup = Join-Path (Get-BackupRoot -StateRoot $StateRoot) ('appplugins-' + (Get-Date -Format 'yyyyMMdd-HHmmss') + '-' + ($entry.Name -replace '\.bundle$', ''))
+                New-Item -ItemType Directory -Path $backup -Force | Out-Null
+                Move-Item -LiteralPath $entry.Path -Destination (Join-Path $backup $entry.Name)
+                if (-not $backupPath) { $backupPath = $backup }
+                Write-Info -Stage 'BACKUP' ('旧 {0} 已移到：{1}' -f $entry.Name, $backup)
+            }
+
+            Copy-Item -LiteralPath $source -Destination $entry.Path -Recurse -Force
+            if (-not (Test-Path -LiteralPath (Join-Path $entry.Path 'PackageContents.xml'))) {
+                throw ('复制后的目录里没有 PackageContents.xml：{0}' -f $entry.Path)
+            }
+            $installedPaths.Add($entry.Path)
+            Write-Info -Stage 'COPY' ('已复制 {0}' -f $entry.Path)
         }
+
         $state = [pscustomobject]@{
             schemaVersion    = 1
             mode             = 'appplugins'
             installedVersion = $info.Version
             payloadPath      = $null
-            bundlePath       = $target
+            bundlePath       = $installedPaths[0]
+            bundlePaths      = $installedPaths.ToArray()
             instances        = @()
         }
         Save-InstallState -StateRoot $StateRoot -State $state
-        Write-Info -Stage 'DONE' ('已装到 ApplicationPlugins：{0}（版本 {1}，所有 CAD 版本共享）' -f $target, $info.Version)
-        return [pscustomobject]@{ Success = $true; Version = $info.Version; Path = $target; BackupPath = $backupPath }
+        Write-Info -Stage 'DONE' ('已装到 ApplicationPlugins：{0}（版本 {1}，所有 CAD 版本共享）' -f ($installedPaths -join '、'), $info.Version)
+        return [pscustomobject]@{ Success = $true; Version = $info.Version; Path = $installedPaths[0]; Paths = $installedPaths.ToArray(); BackupPath = $backupPath }
     } catch {
         Write-Err -Stage 'INSTALL' $_.Exception.Message
         return [pscustomobject]@{ Success = $false; Error = $_.Exception.Message; Path = (Get-GlobalBundlePath -AppsRoot $AppsRoot) }
@@ -557,8 +625,7 @@ function Uninstall-CadMathGlobalBundle {
         [string]$AppsRoot,
         $Instances
     )
-    $target = Get-GlobalBundlePath -AppsRoot $AppsRoot
-    $owned = @(Get-RemovableDirectories -PayloadDir $target)
+    $owned = @(Get-RemovableDirectories -PayloadDir $null)
     $cleaned = New-Object System.Collections.Generic.List[string]
     foreach ($instance in (ConvertTo-ItemArray -Value $Instances)) {
         try {
@@ -569,10 +636,13 @@ function Uninstall-CadMathGlobalBundle {
         }
     }
     $backupPath = $null
-    if (Test-Path -LiteralPath $target) {
-        $backup = Join-Path (Get-BackupRoot -StateRoot $StateRoot) ('appplugins-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
-        New-Item -ItemType Directory -Path $backup -Force | Out-Null
-        Move-Item -LiteralPath $target -Destination (Join-Path $backup 'CadMath03.bundle')
+    $removed = New-Object System.Collections.Generic.List[string]
+    $backup = Join-Path (Get-BackupRoot -StateRoot $StateRoot) ('appplugins-' + (Get-Date -Format 'yyyyMMdd-HHmmss'))
+    foreach ($entry in (Get-GlobalBundlePaths -AppsRoot $AppsRoot)) {
+        if (-not (Test-Path -LiteralPath $entry.Path)) { continue }
+        if (-not (Test-Path -LiteralPath $backup)) { New-Item -ItemType Directory -Path $backup -Force | Out-Null }
+        Move-Item -LiteralPath $entry.Path -Destination (Join-Path $backup $entry.Name)
+        $removed.Add($entry.Path)
         $backupPath = $backup
     }
     $empty = [pscustomobject]@{
@@ -589,5 +659,5 @@ function Uninstall-CadMathGlobalBundle {
     } else {
         Write-Info -Stage 'UNINSTALL' 'ApplicationPlugins 里没有找到 CadMath03.bundle，未删除任何插件文件。'
     }
-    return [pscustomobject]@{ Success = $true; Removed = ($backupPath -ne $null); BackupPath = $backupPath; Cleaned = $cleaned.ToArray() }
+    return [pscustomobject]@{ Success = $true; Removed = ($removed.Count -gt 0); RemovedPaths = $removed.ToArray(); BackupPath = $backupPath; Cleaned = $cleaned.ToArray() }
 }

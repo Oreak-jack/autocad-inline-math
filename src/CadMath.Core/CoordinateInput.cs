@@ -22,8 +22,8 @@ public static class CoordinateInput
         var prefix = string.Empty;
         if (kind == PromptKind.Point && (text[0] == '@' || text[0] == '#'))
         {
-            prefix = text[..1];
-            text = text[1..];
+            prefix = text.Substring(0, 1);
+            text = text.Substring(1);
         }
 
         var separator = text.Contains(',') ? ',' : '<';

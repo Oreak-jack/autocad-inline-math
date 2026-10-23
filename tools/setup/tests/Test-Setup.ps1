@@ -12,7 +12,12 @@ $scriptDir = Split-Path -Parent $MyInvocation.MyCommand.Path
 $PSScriptRoot = $scriptDir
 if (-not $SetupJson) { $SetupJson = Join-Path $scriptDir '..\..\..\dist\setup.json' }
 if (-not $BundleDir) { $BundleDir = Join-Path $scriptDir '..\..\..\dist\CadMath03.bundle' }
-if (-not $ZipPath) { $ZipPath = Join-Path $scriptDir '..\..\..\dist\CadMath-InlineMath-0.4.1.zip' }
+if (-not $ZipPath) {
+    # 不写死版本号：取 dist 里最新的正式 zip，避免每次发版都要改测试。
+    $latest = @(Get-ChildItem -LiteralPath (Join-Path $scriptDir '..\..\..\dist') -Filter 'CadMath-InlineMath-*.zip' -ErrorAction SilentlyContinue |
+        Where-Object { $_.Name -notmatch 'experimental' } | Sort-Object LastWriteTime -Descending) | Select-Object -First 1
+    if ($latest) { $ZipPath = $latest.FullName }
+}
 
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version 2
@@ -144,6 +149,44 @@ try {
         $reasons = @($m.Rejections | ForEach-Object { $_.Reason })
         $m.Status -eq 'none' -and ($reasons -contains 'series-mismatch') -and ($reasons -contains 'status-planned')
     }
+    Check '宿主按 CAD 系列选择入口 DLL（2025/2026 走 .NET 8，2024 走 .NET Framework）' {
+        $h25 = Get-HostForSeries -Setup $setup -Series 'R25.1'
+        $h24 = Get-HostForSeries -Setup $setup -Series '24.3'
+        $h25.entry -eq 'Contents/Win64/CadMath03.dll' -and $h24.entry -eq 'Contents/Win64-2024/CadMath03.dll' -and $null -eq (Get-HostForSeries -Setup $setup -Series 'R23.0')
+    }
+    Check '清单拒绝重复的宿主 series' {
+        $bad = Join-Path $root 'dup-host.json'
+        $clone = [IO.File]::ReadAllText($SetupJson, [Text.Encoding]::UTF8) | ConvertFrom-Json
+        $clone.hosts[1].series = @('R25.0')
+        [IO.File]::WriteAllText($bad, ($clone | ConvertTo-Json -Depth 10), (New-Object Text.UTF8Encoding($true)))
+        Expect-Throws { Read-SetupManifest -Path $bad } '*重复*'
+    }
+    Check '2024 适配器在实验许可下可匹配' {
+        $m = Select-AdapterForInstance -Setup $setup -Instance $instance24 -Architecture 'x64' -AllowExperimental
+        $m.Status -eq 'matched' -and $m.Adapter.id -eq 'legacy-r24'
+    }
+    Check '2024 安装后 LOADER 指向 Win64-2024，2026 仍指向 Win64' {
+        $expSetup = [IO.File]::ReadAllText($SetupJson, [Text.Encoding]::UTF8) | ConvertFrom-Json
+        foreach ($adapter in @($expSetup.adapters)) { if ($adapter.id -eq 'legacy-r24') { $adapter.status = 'built' } }
+        $expPath = Join-Path $root 'experimental-setup.json'
+        [IO.File]::WriteAllText($expPath, ($expSetup | ConvertTo-Json -Depth 10), (New-Object Text.UTF8Encoding($true)))
+        $parsed = Read-SetupManifest -Path $expPath
+
+        $state24 = Join-Path $root 'state-2024'
+        $r24 = Install-CadMathPackage -Setup $parsed -SourcePath $BundleDir -Instances @($instance24) -StateRoot $state24 -Architecture 'x64'
+        $loader24 = if ($r24.Success) { $r24.Loader } else { '' }
+        $stateDoc = Read-InstallState -StateRoot $state24
+        $entry24 = if ($stateDoc.instances.Count -gt 0) { $stateDoc.instances[0].entry } else { '' }
+        $null = Uninstall-CadMathInstances -Instances @($instance24) -StateRoot $state24
+
+        $state25 = Join-Path $root 'state-2026'
+        $r25 = Install-CadMathPackage -Setup $parsed -SourcePath $BundleDir -Instances @($instance25) -StateRoot $state25 -Architecture 'x64'
+        $loader25 = if ($r25.Success) { $r25.Loader } else { '' }
+        $null = Uninstall-CadMathInstances -Instances @($instance25) -StateRoot $state25
+
+        $r24.Success -and $r25.Success -and ($loader24 -match 'Win64-2024\\CadMath03\.dll$') -and ($entry24 -eq 'Contents\Win64-2024\CadMath03.dll') -and ($loader25 -match 'Win64\\CadMath03\.dll$')
+    }
+
     Check '适配器声明了构建区间、但实例构建号未知时拒绝' {
         $rangeSetup = [IO.File]::ReadAllText($SetupJson, [Text.Encoding]::UTF8) | ConvertFrom-Json
         $rangeSetup.adapters[0] | Add-Member -NotePropertyName buildRange -NotePropertyValue ([pscustomobject]@{ min = '25.1.50.0'; max = '25.1.55.0' }) -Force
@@ -263,7 +306,7 @@ try {
         $key = Get-RegistrationKey -ProductPath $instance25.ProductPath
         $loader = (Get-ItemProperty -LiteralPath $key).LOADER
         $failed.ExitCode -eq 3 -and $failed.Output -match '已恢复安装前的注册表与负载状态' -and
-            $state.installedVersion -eq '0.4.1' -and (Test-Path -LiteralPath $loader) -and
+            $state.installedVersion -eq $setup.releaseVersion -and (Test-Path -LiteralPath $loader) -and
             -not (Test-Path (Get-JournalFile -StateRoot $stateRoot))
     }
     Check '回滚失败时保留事务记录，重启后可恢复' {
@@ -274,7 +317,7 @@ try {
         Copy-Item -LiteralPath $payload -Destination $fake -Recurse -Force
         $backupDir = Join-Path (Get-BackupRoot -StateRoot $stateRoot) 'crash-sim'
         New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
-        $backupPayload = Join-Path $backupDir '0.4.1'
+        $backupPayload = Join-Path $backupDir $setup.releaseVersion
         Move-Item -LiteralPath $payload -Destination $backupPayload
         $snapshot = Get-RegistrationSnapshot -ProductPath $instance25.ProductPath
         $journal = [pscustomobject]@{

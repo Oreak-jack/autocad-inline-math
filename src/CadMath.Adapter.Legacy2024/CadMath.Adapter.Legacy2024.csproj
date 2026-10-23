@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <RootNamespace>CadMath.Adapter.Legacy2024</RootNamespace>
+    <AssemblyName>CadMath.Adapter.Legacy2024</AssemblyName>
+    <Description>AutoCAD 2024（R24.x）输入拦截适配器：同一份源码，NET Framework 4.8 编译。</Description>
+    <UseWPF>true</UseWPF>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CadMath.Abstractions\CadMath.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\CadMath.Adapter.Shared\**\*.cs" LinkBase="Shared" />
+  </ItemGroup>
+
+  <!-- AutoCAD 2024 的官方引用程序集（lib/net47）。只编译、不复制。 -->
+  <ItemGroup>
+    <PackageReference Include="AutoCAD.NET" Version="24.3.0" ExcludeAssets="runtime" PrivateAssets="none" />
+    <PackageReference Include="AutoCAD.NET.Model" Version="24.3.0" ExcludeAssets="runtime" PrivateAssets="none" />
+    <PackageReference Include="AutoCAD.NET.Core" Version="24.3.0" ExcludeAssets="runtime" PrivateAssets="none" />
+  </ItemGroup>
+
+</Project>

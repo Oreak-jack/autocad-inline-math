@@ -199,7 +199,7 @@ CadMath-Setup.ps1 -Install <实例> -FromBundle D:\pkg\CadMath03.bundle -Yes
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\tests\Test-Setup.ps1
-# 通过 28 项，失败 0 项
+# 通过 33 项，失败 0 项
 ```
 
 测试用临时 `-StateRoot` 与假注册表根（`HKCU:\Software\CadMathSetupTest\<guid>`），不会动真实安装；覆盖清单校验、适配器匹配的每个拒绝原因、zip 越界、安装/修复/卸载、`TRUSTEDPATHS` 合并与还原、事务回滚、崩溃后恢复、版本比较、两种安装方式（按版本注册与 ApplicationPlugins 全局）、CAD 运行时拒绝安装，以及启动批处理的行尾检查。
@@ -207,4 +207,50 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\tests\Test-Setup
 ## 构建注意：批处理必须是 CRLF
 
 `CadMath-Setup.cmd` 用 **CRLF 行尾 + 纯 ASCII**。cmd.exe 遇到 LF-only 的批处理会把整份脚本切错行（报一串 `is not recognized`，最后停在 `pause`，双击看起来就是闪退）。`.gitattributes` 已对 `*.cmd` 强制 `eol=crlf`，`build/build.ps1` 直接复制仓库里的文件，测试里也有一条断言防止它被改回去。
+---
 
+## 0.4.2：一套包、两代宿主
+
+2024 用 .NET Framework 4.8，2025/2026 用 .NET 8，进程里只能有一个 CLR。做法不是"再发一个安装器"，
+而是在同一个包里放两代宿主，让安装器按实例的 CAD 系列选入口：
+
+```
+CadMath03.bundle/Contents/Win64/        .NET 8      ← 2025 / 2026
+CadMath03.bundle/Contents/Win64-2024/   .NET Framework 4.8 ← 2024
+CadMath03-2024.bundle/                  2024 专用（ApplicationPlugins 全局安装用）
+```
+
+`setup.json` 里的 `hosts[]` 描述这个映射：
+
+```json
+"hosts": [
+  { "series": ["R25.0", "R25.1"], "runtime": "net8.0-windows",
+    "entry": "Contents/Win64/CadMath03.dll", "bundle": "CadMath03.bundle" },
+  { "series": ["R24.0", "R24.1", "R24.2", "R24.3"], "runtime": "net48",
+    "entry": "Contents/Win64-2024/CadMath03.dll", "bundle": "CadMath03-2024.bundle" }
+]
+```
+
+安装时对每个实例做两件事：
+
+1. 按 `adapters[].cadSeries` 选适配器（2024 只有 `legacy-r24` 能匹配）；
+2. 按实例的系列从 `hosts[]` 选入口 DLL，注册的 `LOADER` 指向该入口。
+
+**找不到对应宿主就报错停止**（`发行包没有为 R24.3 提供宿主。`），绝不回落到 `Win64` —— 那会把
+.NET 8 的程序集塞给 2024，加载时直接 `BadImageFormatException`。
+
+状态文件 `state.json` 的每个实例多记一个 `entry` 字段，卸载和诊断时可以据此知道当时装的是哪一代。
+
+### 实验包（2024 验证用）
+
+正式包里 `legacy-r24` 的 `status` 是 `planned`，安装器会以 `status-planned` 拒绝该实例。
+给测试者验的是实验包：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File build\build.ps1 -Experimental
+# → dist/CadMath-InlineMath-0.4.2-experimental-2024.zip（legacy-r24 的状态被提升为 built）
+```
+
+测试者装好后跑 `CM3PROBE`，输出里 `host=` `clr=` `adapter=` `binding=` 与焦点类型齐全；把那段连同
+`%TEMP%\CadMath03.log` 发回来即可判定。验证通过后把 `adapters/adapters.json` 里 `legacy-r24` 的
+`status` 改成 `host-tested`，正式包随之开放。

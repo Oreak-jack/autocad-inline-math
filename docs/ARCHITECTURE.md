@@ -225,3 +225,35 @@ v0.3.3 的 541 条解析断言与 45 条路由断言**原样搬过来**当作回
 - **改名代价**：`CadMath03` 程序集名、`ProductCode`/`UpgradeCode` 保留不动，否则老用户升级会并存两套。
   （`CadMath03.bundle` 目录名只有在手动安装时才会出现；按版本注册用的是 `LOADER` 指向的 dll 路径。）
 - **`ApplicationPlugins` 旧式安装**：不在注册表里、被所有 CAD 版本共享，安装器只能"移到备份"而无法按实例管理。
+---
+
+## 10. 两代 CLR 宿主（0.4.2）
+
+AutoCAD 2024 是 .NET Framework 4.7/4.8，2025/2026 是 .NET 8。一个插件 DLL 不可能同时被两个运行时加载，
+所以在**同一个发行包**里放两代宿主，由安装器按实例选择。
+
+### 分层上的变化
+
+- `CadMath.Core` / `CadMath.Abstractions` 的目标框架从 `net8.0` 下调为 **`netstandard2.0`**——两代 CLR 都能消费，
+  测试工程与 Shell 都不必为它做条件编译。`record`/`init` 所需的 `IsExternalInit` 由 `IsExternalInit.cs` 补上，
+  JSON 读取换成自带的 `Json.cs`（`System.Text.Json` 在 netstandard2.0 上不可用）。
+- 拦截逻辑从 `CadMath.Adapter.Modern` 抽到 **`src/CadMath.Adapter.Shared/KeystrokeAdapter.cs`**（无独立工程，
+  由两个适配器用 `<Compile Include>` 链接）。适配器工程变成两行薄壳：只需给出自己的 `Id`。
+- `CadMath.Shell` 多目标：`net8.0-windows;net48`。差异只在两处——适配器装载方式
+  （net8 用可卸载的 `AssemblyLoadContext`，net48 用 `Assembly.LoadFrom` + `AssemblyResolve` 把
+  `CadMath.Core`/`CadMath.Abstractions` 指回 Shell 已加载的一份，避免类型身份分裂）。
+- 引用来自**官方 NuGet**（`AutoCAD.NET` / `.Model` / `.Core`），不再依赖本机安装路径：
+  25.1.0 供 .NET 8、24.3.0 供 .NET Framework 4.8，都带 `ExcludeAssets="runtime"`，不会把 Autodesk 的 DLL 打进去。
+
+### 发行清单的变化
+
+`setup.json` 新增 `hosts[]`（系列 → 入口 DLL + 运行时），`files[]` 覆盖两个 bundle。
+安装器据此给每个实例写不同的 `LOADER`，并在找不到对应宿主时**直接失败**而不是回落。
+
+### 代价与边界
+
+- 2024 的 API 兼容性是**编译期结论**：`UIBindings.CommandEditorManager.ActiveEditor.PromptAndInput.InputBuffer`、
+  `ReplaceInputQueue`、`OnSetSelectedTextQueue`、`ViewModel.CommandLine.CommandLineTextBox` 在 24.3 上都能编译通过，
+  但运行期行为（焦点判定、输入队列刷新时机）仍需真机验证，所以适配器状态停在 `planned`。
+- 打包体积翻倍（两个宿主各自带一份 Core/Abstractions）。换取的是"一个 zip 通吃 2024–2026"，
+  以及 2024 上不需要用户另装 .NET 8 运行时。

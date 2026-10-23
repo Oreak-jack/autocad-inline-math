@@ -15,13 +15,13 @@ public readonly record struct HostSeries(int Major, int Minor)
         if (string.IsNullOrWhiteSpace(value)) return false;
 
         var text = value.Trim();
-        if (text.StartsWith('R') || text.StartsWith('r')) text = text[1..];
+        if (text.StartsWith("R", StringComparison.OrdinalIgnoreCase)) text = text.Substring(1);
 
         var dot = text.IndexOf('.');
         if (dot <= 0) return false;
 
-        if (!int.TryParse(text.AsSpan(0, dot), out var major) || major <= 0) return false;
-        if (!int.TryParse(text.AsSpan(dot + 1), out var minor) || minor < 0) return false;
+        if (!int.TryParse(text.Substring(0, dot), out var major) || major <= 0) return false;
+        if (!int.TryParse(text.Substring(dot + 1), out var minor) || minor < 0) return false;
 
         series = new HostSeries(major, minor);
         return true;

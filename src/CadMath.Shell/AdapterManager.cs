@@ -1,6 +1,8 @@
 using System.IO;
 using System.Reflection;
+#if NET
 using System.Runtime.Loader;
+#endif
 using CadMath.Abstractions;
 using CadMath.Core;
 
@@ -16,13 +18,22 @@ internal sealed class AdapterManager : IDisposable
 
     private readonly ILogSink _log;
     private readonly IAdapterHost _host;
+#if NET
     private readonly List<AdapterLoadContext> _contexts = new();
+#endif
     private readonly List<RejectedAdapter> _rejected = new();
     private readonly string _shellDirectory;
 
     private ICadAdapter? _adapter;
     private int _replacements;
     private bool _disposed;
+
+#if !NET
+    static AdapterManager()
+    {
+        AppDomain.CurrentDomain.AssemblyResolve += ResolveAdapterDependency;
+    }
+#endif
 
     public AdapterManager(ILogSink log)
     {
@@ -139,6 +150,7 @@ internal sealed class AdapterManager : IDisposable
         }
 
         _adapter = null;
+#if NET
         foreach (var context in _contexts)
         {
             try
@@ -151,6 +163,7 @@ internal sealed class AdapterManager : IDisposable
             }
         }
         _contexts.Clear();
+#endif
     }
 
     private void Fail(string message)
@@ -203,9 +216,15 @@ internal sealed class AdapterManager : IDisposable
         Assembly assembly;
         try
         {
+#if NET
             var context = new AdapterLoadContext(Path.GetDirectoryName(path)!);
             _contexts.Add(context);
             assembly = context.LoadFromAssemblyPath(path);
+#else
+            // .NET Framework 没有可卸载的 AssemblyLoadContext；同一 AppDomain 里
+            // CadMath.Abstractions / CadMath.Core 本来就是 Shell 已加载的那一份，类型身份天然一致。
+            assembly = Assembly.LoadFrom(path);
+#endif
         }
         catch (Exception ex)
         {
@@ -267,6 +286,7 @@ internal sealed class AdapterManager : IDisposable
     /// 适配器装载上下文：契约程序集必须与 Shell 共享同一份，否则
     /// <see cref="ICadAdapter"/> 会出现两个版本的类型，转换必然失败。
     /// </summary>
+#if NET
     private sealed class AdapterLoadContext : AssemblyLoadContext
     {
         private static readonly Dictionary<string, Assembly> Shared = new(StringComparer.OrdinalIgnoreCase)
@@ -290,4 +310,17 @@ internal sealed class AdapterManager : IDisposable
             return null;
         }
     }
+#else
+    /// <summary>
+    /// .NET Framework 用 AppDomain 解析：适配器目录里的程序集可能引用 Shell 目录下的
+    /// CadMath.Abstractions / CadMath.Core，必须解析到已加载的那一份，否则类型身份会分裂。
+    /// </summary>
+    private static Assembly? ResolveAdapterDependency(object sender, ResolveEventArgs args)
+    {
+        var name = new AssemblyName(args.Name).Name;
+        if (string.Equals(name, "CadMath.Abstractions", StringComparison.OrdinalIgnoreCase)) return typeof(ICadAdapter).Assembly;
+        if (string.Equals(name, "CadMath.Core", StringComparison.OrdinalIgnoreCase)) return typeof(Conversion).Assembly;
+        return null;
+    }
+#endif
 }

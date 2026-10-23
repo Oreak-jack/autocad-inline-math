@@ -4,6 +4,7 @@ Set-StrictMode -Version 2
 
 $script:AllStatuses = @('planned', 'built', 'automated-tested', 'host-tested', 'released', 'disabled')
 $script:InstallableStatuses = @('built', 'automated-tested', 'host-tested', 'released')
+$script:HostRuntimes = @('net8.0-windows', 'net48')
 
 function Read-SetupManifest {
     param([Parameter(Mandatory)][string]$Path)
@@ -13,7 +14,35 @@ function Read-SetupManifest {
     }
     if ($doc.product -ne 'CadMath') { throw '发行清单的 product 不是 CadMath。' }
     if ([string]$doc.releaseVersion -notmatch '^\d+\.\d+\.\d+$') { throw '发行清单的 releaseVersion 不合法。' }
-    if ($doc.zip -eq $null -or -not $doc.zip.name) { throw '发行清单缺少 zip.name。' }
+    # zip 段可选：正式发行由 release 资产名决定，清单里只保留逐文件哈希。
+    if ($doc.PSObject.Properties['zip'] -and $doc.zip -ne $null -and $doc.zip.name) {
+        if ([string]$doc.zip.sha256 -and [string]$doc.zip.sha256 -notmatch '^[0-9a-fA-F]{64}$') {
+            throw '发行清单的 zip.sha256 不合法。'
+        }
+    }
+    if ($doc.PSObject.Properties['hosts'] -and $doc.hosts -ne $null) {
+        $seenSeries = @{}
+        foreach ($hostSpec in @($doc.hosts)) {
+            foreach ($field in @('series', 'runtime', 'entry')) {
+                if ($hostSpec.PSObject.Properties[$field] -eq $null -or [string]::IsNullOrWhiteSpace([string]$hostSpec.$field)) {
+                    throw ('宿主缺少字段 {0}。' -f $field)
+                }
+            }
+            if ($script:HostRuntimes -notcontains $hostSpec.runtime) {
+                throw ('宿主的 runtime 不受支持：{0}' -f $hostSpec.runtime)
+            }
+            $entry = ([string]$hostSpec.entry) -replace '\\', '/'
+            if ($entry -match '(^|/)\.\.(/|$)' -or -not $entry.StartsWith('Contents/')) {
+                throw ('宿主入口必须在 Contents/ 下：{0}' -f $hostSpec.entry)
+            }
+            foreach ($series in @($hostSpec.series)) {
+                $key = ([string]$series).Trim().ToUpperInvariant()
+                if (-not $key.StartsWith('R')) { $key = 'R' + $key }
+                if ($seenSeries.ContainsKey($key)) { throw ('宿主 series 重复：{0}' -f $series) }
+                $seenSeries[$key] = $true
+            }
+        }
+    }
     if ($doc.files -ne $null) {
         foreach ($file in @($doc.files)) {
             if (-not $file.path) { throw '发行清单的 files 条目缺少 path。' }
@@ -67,12 +96,42 @@ function Test-BuildInRange {
     return $true
 }
 
+function Get-HostForSeries {
+    <#
+    .SYNOPSIS
+        按实例的系列（R25.1 / 24.3 …）找到该版本的宿主入口。
+    .DESCRIPTION
+        找不到就返回 $null —— 调用方必须据此报"发行包没有为该版本提供宿主"，
+        绝不能静默回落到 Contents/Win64，否则会把 .NET 8 的 DLL 装进 2024。
+    #>
+    param(
+        [Parameter(Mandatory)]$Setup,
+        [string]$Series
+    )
+    if (-not $Setup.PSObject.Properties['hosts'] -or $Setup.hosts -eq $null) { return $null }
+
+    $key = ([string]$Series).Trim().ToUpperInvariant()
+    if (-not $key.StartsWith('R')) { $key = 'R' + $key }
+
+    foreach ($hostSpec in @($Setup.hosts)) {
+        foreach ($series in @($hostSpec.series)) {
+            $candidate = ([string]$series).Trim().ToUpperInvariant()
+            if (-not $candidate.StartsWith('R')) { $candidate = 'R' + $candidate }
+            if ($candidate -eq $key) { return $hostSpec }
+        }
+    }
+    return $null
+}
+
 function Select-AdapterForInstance {
     param(
         [Parameter(Mandatory)]$Setup,
         [Parameter(Mandatory)]$Instance,
-        [string]$Architecture = 'x64'
+        [string]$Architecture = 'x64',
+        [switch]$AllowExperimental
     )
+    $allowed = $script:InstallableStatuses
+    if ($AllowExperimental) { $allowed = @($allowed + 'planned') }
     $matched = New-Object System.Collections.Generic.List[object]
     $rejected = New-Object System.Collections.Generic.List[object]
     foreach ($adapter in @($Setup.adapters)) {
@@ -81,7 +140,7 @@ function Select-AdapterForInstance {
         if (@($adapter.cadSeries) -notcontains $Instance.Series) {
             $reason = 'series-mismatch'
             $detail = ('需要 {0}，实例是 {1}' -f (@($adapter.cadSeries) -join '/'), $Instance.Series)
-        } elseif ($script:InstallableStatuses -notcontains $adapter.status) {
+        } elseif ($allowed -notcontains $adapter.status) {
             $reason = 'status-' + $adapter.status
             $detail = ('状态 {0} 不允许安装' -f $adapter.status)
         } elseif ($adapter.PSObject.Properties['architecture'] -and $adapter.architecture -and $adapter.architecture -ne $Architecture) {
