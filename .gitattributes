@@ -3,3 +3,5 @@
 *.md text eol=lf
 *.yml text eol=lf
 *.csproj text eol=lf
+*.cmd text eol=crlf
+*.bat text eol=crlf

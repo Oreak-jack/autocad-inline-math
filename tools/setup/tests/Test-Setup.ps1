@@ -309,6 +309,24 @@ try {
         $info = Get-BundleInfo -Bundle $BundleDir
         $info.Version -eq $setup.releaseVersion
     }
+    Check '启动批处理是 CRLF 且纯 ASCII（否则 cmd.exe 会解析错乱闪退）' {
+        $launchers = @(
+            (Join-Path $PSScriptRoot '..\CadMath-Setup.cmd'),
+            (Join-Path $PSScriptRoot '..\..\..\dist\CadMath-Setup.cmd')
+        )
+        $ok = $true
+        $checked = 0
+        foreach ($path in $launchers) {
+            if (-not (Test-Path -LiteralPath $path)) { continue }
+            $checked++
+            $bytes = [System.IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $path))
+            $cr = @($bytes | Where-Object { $_ -eq 13 }).Count
+            $lf = @($bytes | Where-Object { $_ -eq 10 }).Count
+            $nonAscii = @($bytes | Where-Object { $_ -gt 127 }).Count
+            if ($cr -ne $lf -or $nonAscii -gt 0) { $ok = $false }
+        }
+        $ok -and $checked -ge 1
+    }
     if (@(Get-CadProcess).Count -gt 0) {
         Check 'CAD 正在运行时拒绝安装（未进入测试模式）' {
             $env:CADMATH_SETUP_ALLOW_CAD_RUNNING = $null

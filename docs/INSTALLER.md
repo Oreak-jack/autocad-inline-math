@@ -173,7 +173,12 @@ CadMath-Setup.ps1 -Install <实例> -FromBundle D:\pkg\CadMath03.bundle -Yes
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\tests\Test-Setup.ps1
-# 通过 24 项，失败 0 项
+# 通过 25 项，失败 0 项
 ```
 
-测试用临时 `-StateRoot` 与假注册表根（`HKCU:\Software\CadMathSetupTest\<guid>`），不会动真实安装；覆盖清单校验、适配器匹配的每个拒绝原因、zip 越界、安装/修复/卸载、`TRUSTEDPATHS` 合并与还原、事务回滚、崩溃后恢复、版本比较、CAD 运行时拒绝安装。
+测试用临时 `-StateRoot` 与假注册表根（`HKCU:\Software\CadMathSetupTest\<guid>`），不会动真实安装；覆盖清单校验、适配器匹配的每个拒绝原因、zip 越界、安装/修复/卸载、`TRUSTEDPATHS` 合并与还原、事务回滚、崩溃后恢复、版本比较、CAD 运行时拒绝安装，以及启动批处理的行尾检查。
+
+## 构建注意：批处理必须是 CRLF
+
+`CadMath-Setup.cmd` 用 **CRLF 行尾 + 纯 ASCII**。cmd.exe 遇到 LF-only 的批处理会把整份脚本切错行（报一串 `is not recognized`，最后停在 `pause`，双击看起来就是闪退）。`.gitattributes` 已对 `*.cmd` 强制 `eol=crlf`，`build/build.ps1` 直接复制仓库里的文件，测试里也有一条断言防止它被改回去。
+
