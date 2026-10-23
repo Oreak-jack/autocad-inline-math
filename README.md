@@ -1,5 +1,7 @@
 # AutoCAD Inline Math
 
+[![tests](https://github.com/Oreak-jack/autocad-inline-math/actions/workflows/tests.yml/badge.svg)](https://github.com/Oreak-jack/autocad-inline-math/actions/workflows/tests.yml)
+
 在 AutoCAD 命令行里直接写算式：`100-30` 回车就是 `70`，`@100-30,0` 就是相对坐标 `@70,0`。
 支持长度、角度、坐标等所有"提示输入"的场景，不需要记命令、不需要开计算器、不跳出 CAD。
 
