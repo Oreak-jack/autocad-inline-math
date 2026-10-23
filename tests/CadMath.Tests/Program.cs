@@ -151,6 +151,13 @@ internal static class Program
         Policy("3/2", Decision.Reject, "", false, true);
         Policy("@100-5,0", Decision.Reject, "", false);
 
+        // AutoCAD 原生方向输入：省略距离段（"<-30"），必须原样放行而不是当成坏表达式。
+        Policy("<-30", Decision.Pass);
+        Policy("<45", Decision.Pass);
+        Policy("@<45", Decision.Pass);
+        Policy("#<0", Decision.Pass);
+        Policy("100<-30", Decision.Replace, "100<-30");
+
         // LENGTHEN 的标量提示：总长、增量、百分比。
         Policy("100-5", Decision.Replace, "95", false);
         Policy("-5/2", Decision.Replace, "-2.5", false);

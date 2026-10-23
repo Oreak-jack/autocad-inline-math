@@ -25,7 +25,7 @@ param(
 Set-StrictMode -Version 2
 $ErrorActionPreference = 'Stop'
 
-$ToolVersion = '0.4.1'
+$ToolVersion = '0.4.5'
 $toolRoot = Split-Path $PSScriptRoot -Parent
 $toolRoot = Split-Path $toolRoot -Parent
 # 用户有没有显式指定安装方式：没指定时，交互模式会问一次，默认按版本注册。
@@ -274,12 +274,14 @@ function Invoke-InstallGlobalFlow {
     }
     if (-not (Resolve-LegacyBundle -Scan $Scan)) { return }
     $usable = New-Object System.Collections.Generic.List[object]
+    $blocked = New-Object System.Collections.Generic.List[string]
     foreach ($instance in @($Scan.Instances)) {
         $state = Get-InstancePackageState -Instance $instance -Setup $Package.Setup -Architecture $Scan.Architecture
         if ($state.Matched -ne $null) { $usable.Add($instance) }
+        else { $blocked.Add(('{0}（{1}）{2}' -f $instance.Label, $instance.Release, $(if ($state.Text) { '：' + $state.Text } else { '' }))) }
     }
     if ($usable.Count -eq 0) {
-        Write-Err -Stage 'INSTALL' '没有任何实例拥有可用适配器，已停止，未修改任何文件。'
+        Write-Err -Stage 'INSTALL' ('没有任何实例拥有可用适配器，已停止，未修改任何文件。原因：' + ($blocked -join '；'))
         return
     }
     $target = Get-GlobalBundlePath
@@ -345,16 +347,16 @@ function Invoke-InstallFlow {
     Write-Host '[安装] 选择目标 AutoCAD 实例' -ForegroundColor White
     $index = 0
     $eligible = New-Object System.Collections.Generic.List[object]
+    $blocked = New-Object System.Collections.Generic.List[string]
     foreach ($instance in $instances) {
         $index++
         $state = Get-InstancePackageState -Instance $instance -Setup $Package.Setup -Architecture $Scan.Architecture
-        $mark = '可安装'
-        if ($state.Matched -eq $null) { $mark = '不可安装' }
         Write-Host ('  {0}. {1}（{2}）— {3}；{4}' -f $index, $instance.Label, $instance.Release, (Get-PluginStateText -Instance $instance), $state.Text)
         if ($state.Matched -ne $null) { $eligible.Add($instance) }
+        else { $blocked.Add(('{0}（{1}）{2}' -f $instance.Label, $instance.Release, $(if ($state.Text) { '：' + $state.Text } else { '' }))) }
     }
     if ($eligible.Count -eq 0) {
-        Write-Err -Stage 'INSTALL' '没有任何实例拥有可用适配器，已停止，未修改任何文件。'
+        Write-Err -Stage 'INSTALL' ('没有任何实例拥有可用适配器，已停止，未修改任何文件。原因：' + ($blocked -join '；'))
         return
     }
     $selected = Read-InstanceSelection -Instances $instances

@@ -28,6 +28,9 @@ public static class InputTranslator
         var value = original.Trim();
 
         if (value.Length == 0 || !ContainsOperator(value)) return Conversion.Pass(original);
+        // AutoCAD 原生的方向输入（"<-30"、"@<45"、"#<0"）：距离段可以省略，
+        // 由 CAD 用当前距离/橡皮筋补足。这类输入不是表达式，必须原样放行。
+        if (IsNativeDirection(value)) return Conversion.Pass(original);
         if (LispForm.IsMatch(value)) return Conversion.Pass(original);
         if (value.Any(c => AllowedCharacters.IndexOf(c) < 0)) return Conversion.Pass(original);
 
@@ -54,5 +57,12 @@ public static class InputTranslator
             if (c is '+' or '-' or '*' or '/' or '(' or ')') return true;
         }
         return false;
+    }
+
+    /// <summary>首个有效字符是 <c>&lt;</c>（可带 <c>@</c>/<c>#</c> 前缀）——CAD 自己的方向输入。</summary>
+    private static bool IsNativeDirection(string value)
+    {
+        var index = value[0] == '@' || value[0] == '#' ? 1 : 0;
+        return index < value.Length && value[index] == '<';
     }
 }

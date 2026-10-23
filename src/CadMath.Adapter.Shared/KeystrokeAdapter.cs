@@ -212,7 +212,8 @@ public abstract class KeystrokeAdapter : ICadAdapter
 
             if (conversion.Decision == Decision.Reject)
             {
-                e.Handled = true;
+                // 只记日志、不吞按键：吞掉 Enter 会让命令行彻底提交不了（0.4.4 的 bug）。
+                // 仍标记"这一笔已处理"，避免紧随其后的 WM_CHAR 重复记一遍日志。
                 NoteKeystrokeConsumed(message.message, key);
                 _host.Report(LogLevel.Warn, "rejected: " + conversion.Code + " " + conversion.Message + " input=" + before);
                 System.Media.SystemSounds.Beep.Play();
