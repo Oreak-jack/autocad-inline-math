@@ -127,6 +127,8 @@ powershell -ExecutionPolicy Bypass -File build\build.ps1 -AcadDir "D:\AutoCAD 20
 
 ```
 dist/CadMath03.bundle/                可直接复制的包
+  PackageContents.xml                 包描述（版本已注入）
+  BUILD-INFO.txt                      构建时间、配置、版本
   Contents/Win64/
     CadMath03.dll                     Shell（程序集名沿用旧名）
     CadMath.Core.dll
@@ -134,10 +136,7 @@ dist/CadMath03.bundle/                可直接复制的包
     adapters.json
     Adapters/CadMath.Adapter.Modern.dll
     Adapters/CadMath.Adapter.Legacy.dll
-    PackageContents.xml
-    BUILD-INFO.txt
-  PackageContents.xml
-dist/CadMath-InlineMath-0.4.0.zip     压缩包（-NoZip 可跳过）
+dist/CadMath-InlineMath-0.4.0.zip     整包压缩（-NoZip 可跳过），解压即得上面这个目录
 ```
 
 版本号只写在 `Directory.Build.props`（`<Version>0.4.0</Version>`），程序和 `PackageContents.xml` 都从那里取。
