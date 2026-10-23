@@ -100,6 +100,10 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\CadMath-Setup.ps
 
 菜单 2 的执行顺序：请求 GitHub `releases/latest` → 校验 `setup.json` → 下载 zip → 逐文件 SHA-256 校验 → 复用安装流程。
 
+0.4.7 起这五步都带可见进度：`1/5 连接与版本查询`（含重试次数与耗时）、`2/5 下载并校验清单`、
+`3/5 下载安装包`（每 0.4 秒刷新"已下载 X / Y（百分比），速度"）、`4/5 解压、逐文件校验、替换负载并注册`。
+下载与解压都发生在 `%TEMP%\cadmath-update-<随机>`，流程结束后整个目录删除。
+
 > **0.4.5 及更早的更新流程是坏的**：清单里没有 `zip` 段，而 StrictMode 下访问 `$Setup.zip` 会抛
 > "找不到属性 zip"，下载完就失败。0.4.6 起改为用 `Get-SetupField` 读可选字段，构建时也重新写入
 > `zip { name, sha256 }`（`sha256` 留空，真正的校验值在 `SHA256SUMS.txt`）。装着 0.4.5 或更早的机器，

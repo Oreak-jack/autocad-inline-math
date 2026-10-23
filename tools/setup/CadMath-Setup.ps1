@@ -407,11 +407,13 @@ function Invoke-UpdateFlow {
         Write-Warn -Stage 'UPDATE' '已按参数禁用网络，取消本次更新检查。'
         return
     }
-    Write-Info -Stage 'UPDATE' '开始检查更新（本次操作会访问发布源）'
+    Write-Info -Stage 'UPDATE' '开始检查更新（本次操作会访问发布源 github.com）'
+    Write-Host '  1/5 连接与版本查询' -ForegroundColor White
     if (-not (Test-NetworkAvailable)) {
         Write-Err -Stage 'UPDATE' '没有网络连接。可以改用本地安装包：把发行 zip 解压后运行 CadMath-Setup.cmd（离线安装同样校验哈希）。'
         return
     }
+    Write-Host '        网络可达'
     try {
         $release = Get-LatestRelease
         $assets = Get-ReleaseAssets -Release $release
@@ -419,14 +421,19 @@ function Invoke-UpdateFlow {
         Write-Err -Stage 'UPDATE' $_.Exception.Message
         return
     }
+    Write-Host ('        发行版：{0}' -f $assets.Tag)
+    Write-Host '  2/5 下载并校验清单 setup.json'
     $work = Join-Path $env:TEMP ('cadmath-update-' + [guid]::NewGuid().ToString('N'))
     New-Item -ItemType Directory -Path $work -Force | Out-Null
     try {
         $setupPath = Join-Path $work $assets.Setup.name
+        Write-Host ('        下载 {0}（{1}）' -f $assets.Setup.name, (Format-TransferSize -Bytes ([double]$assets.Setup.size)))
         $null = Save-RemoteFile -Uri $assets.Setup.browser_download_url -Destination $setupPath
         $setup = Read-SetupManifest -Path $setupPath
+        Write-Host ('        清单 OK：v{0}，{1} 个适配器，{2} 个文件校验值' -f $setup.releaseVersion, @($setup.adapters).Count, @($setup.files).Count)
         $state = Read-InstallState -StateRoot $StateRoot
-        Write-Info -Stage 'UPDATE' ('远端版本 v{0}，本机受管版本 v{1}' -f $setup.releaseVersion, $(if ($state.installedVersion) { $state.installedVersion } else { '无' }))
+        $localText = if ($state.installedVersion) { 'v' + $state.installedVersion } else { '未安装' }
+        Write-Info -Stage 'UPDATE' ('远端版本 v{0}，本机受管版本 {1}' -f $setup.releaseVersion, $localText)
         if ((Compare-ProductVersion -Current $state.installedVersion -Remote $setup.releaseVersion) -ge 0) {
             Write-Host ''
             Write-Host ('已是最新版本（v{0}），未修改任何文件。' -f $state.installedVersion) -ForegroundColor Green
@@ -443,12 +450,24 @@ function Invoke-UpdateFlow {
             return
         }
         Write-Host ''
-        Write-Host ('发现新版本 v{0}（当前 v{1}）' -f $setup.releaseVersion, $state.installedVersion) -ForegroundColor Green
+        Write-Host ('发现新版本 v{0}（当前 {1}）' -f $setup.releaseVersion, $localText) -ForegroundColor Green
         $notes = $assets.Notes
         if ($notes) {
             Write-Host '[更新说明（节选）]' -ForegroundColor White
-            $lines = ($notes -split "`n") | Select-Object -First 12
-            foreach ($line in $lines) { Write-Host ('  ' + $line.TrimEnd()) }
+            $shown = 0
+            foreach ($line in ($notes -split "`n")) {
+                if ($shown -ge 10) { break }
+                $text = $line.Trim()
+                if (-not $text) { continue }
+                if ($text -match '^```') { continue }
+                if ($text -match '^---+$') { continue }
+                if ($text -match '^\[.*\]\(.*\)$') { continue }
+                $text = $text -replace '^#{1,6}\s*', '▸ '
+                $text = $text -replace '\*\*(.+?)\*\*', '$1'
+                $text = $text -replace '`([^`]+)`', '$1'
+                Write-Host ('  ' + $text)
+                $shown++
+            }
             Write-Host ''
         }
         Write-Host ('可用实例：{0}' -f (($applicable | ForEach-Object { $_.Label }) -join '、'))
@@ -457,8 +476,10 @@ function Invoke-UpdateFlow {
             return
         }
         $zipPath = Join-Path $work $assets.Zip.name
-        Write-Info -Stage 'UPDATE' ('下载 {0}' -f $assets.Zip.name)
+        Write-Host '  3/5 下载安装包'
+        Write-Info -Stage 'UPDATE' ('下载 {0}（{1}）' -f $assets.Zip.name, (Format-TransferSize -Bytes ([double]$assets.Zip.size)))
         $null = Save-RemoteFile -Uri ($assets.Zip.browser_download_url) -Destination $zipPath
+        Write-Host '  4/5 解压、逐文件校验、替换负载并注册（详细过程见下方 [EXTRACT]/[VERIFY]/[COPY]/[REGISTER]）' -ForegroundColor White
         $result = Install-CadMathPackage -Setup $setup -SourcePath $zipPath -Instances $applicable -StateRoot $StateRoot -Architecture $Scan.Architecture -IsUpdate
         if ($result.Success) {
             Write-Host ('更新成功：v{0}。请重启 AutoCAD 后输入 CM3STATUS 确认。' -f $result.Version) -ForegroundColor Green

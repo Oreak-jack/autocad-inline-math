@@ -5,6 +5,26 @@ Set-StrictMode -Version 2
 $script:Repository = 'Oreak-jack/autocad-inline-math'
 $script:ReleaseApi = 'https://api.github.com/repos/{0}/releases/latest' -f $script:Repository
 
+function Format-TransferSize {
+    param([double]$Bytes)
+    if ($Bytes -ge 1073741824) { return ('{0:N1} GB' -f ($Bytes / 1073741824)) }
+    if ($Bytes -ge 1048576) { return ('{0:N1} MB' -f ($Bytes / 1048576)) }
+    if ($Bytes -ge 1024) { return ('{0:N0} KB' -f ($Bytes / 1024)) }
+    return ('{0:N0} B' -f $Bytes)
+}
+
+function Write-TransferProgress {
+    param([long]$Done, [long]$Total, [TimeSpan]$Elapsed)
+    $speed = if ($Elapsed.TotalSeconds -gt 0.2) { $Done / $Elapsed.TotalSeconds } else { 0 }
+    $speedText = if ($speed -gt 0) { '，{0}/s' -f (Format-TransferSize -Bytes $speed) } else { '' }
+    if ($Total -gt 0) {
+        $percent = [int](100 * $Done / $Total)
+        Write-Host ("`r    已下载 {0} / {1}（{2}%）{3}    " -f (Format-TransferSize -Bytes $Done), (Format-TransferSize -Bytes $Total), $percent, $speedText) -NoNewline
+    } else {
+        Write-Host ("`r    已下载 {0}{1}    " -f (Format-TransferSize -Bytes $Done), $speedText) -NoNewline
+    }
+}
+
 function Invoke-ReleaseRequest {
     param([string]$Uri, [int]$TimeoutSec = 20)
     $headers = @{
@@ -12,13 +32,24 @@ function Invoke-ReleaseRequest {
         'Accept'     = 'application/vnd.github+json'
     }
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
+    Write-Host ('  请求 {0}' -f $Uri)
+    Write-Host ('    （最长等待 {0} 秒，失败会自动重试）' -f $TimeoutSec)
     $lastError = $null
     for ($attempt = 1; $attempt -le 3; $attempt++) {
+        $watch = [Diagnostics.Stopwatch]::StartNew()
         try {
-            return (Invoke-RestMethod -Uri $Uri -Headers $headers -TimeoutSec $TimeoutSec -ErrorAction Stop)
+            $result = Invoke-RestMethod -Uri $Uri -Headers $headers -TimeoutSec $TimeoutSec -ErrorAction Stop
+            $watch.Stop()
+            Write-Host ('    → 完成，用时 {0:N1} 秒' -f $watch.Elapsed.TotalSeconds) -ForegroundColor DarkGray
+            return $result
         } catch {
+            $watch.Stop()
             $lastError = $_.Exception.Message
-            Start-Sleep -Seconds 2
+            Write-Host ('    → 第 {0} 次失败（{1:N1} 秒）：{2}' -f $attempt, $watch.Elapsed.TotalSeconds, $lastError) -ForegroundColor DarkYellow
+            if ($attempt -lt 3) {
+                Write-Host '      2 秒后重试…'
+                Start-Sleep -Seconds 2
+            }
         }
     }
     throw ('访问发布源失败：{0}' -f $lastError)
@@ -48,16 +79,56 @@ function Get-ReleaseAssets {
 }
 
 function Save-RemoteFile {
-    param([string]$Uri, [string]$Destination, [int]$TimeoutSec = 120)
+    param([string]$Uri, [string]$Destination, [int]$TimeoutSec = 600)
     [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
     $lastError = $null
     for ($attempt = 1; $attempt -le 3; $attempt++) {
         try {
-            Invoke-WebRequest -Uri $Uri -OutFile $Destination -UseBasicParsing -TimeoutSec $TimeoutSec -Headers @{ 'User-Agent' = 'CadMath-Setup' } -ErrorAction Stop
+            # 自己读流并把进度打出来：Invoke-WebRequest 在整块下载期间一声不响，看起来就像卡死。
+            if (-not ('System.Net.Http.HttpClient' -as [type])) {
+                Add-Type -AssemblyName System.Net.Http -ErrorAction Stop
+            }
+            $client = New-Object System.Net.Http.HttpClient
+            $client.Timeout = [TimeSpan]::FromSeconds($TimeoutSec)
+            $client.DefaultRequestHeaders.Add('User-Agent', 'CadMath-Setup')
+            try {
+                $response = $client.GetAsync($Uri, [System.Net.Http.HttpCompletionOption]::ResponseHeadersRead).GetAwaiter().GetResult()
+                $response.EnsureSuccessStatusCode() | Out-Null
+                $total = 0L
+                if ($response.Content.Headers.ContentLength) { $total = [long]$response.Content.Headers.ContentLength }
+                $stream = $response.Content.ReadAsStreamAsync().GetAwaiter().GetResult()
+                $file = [System.IO.File]::Create($Destination)
+                try {
+                    $buffer = New-Object byte[] 81920
+                    $done = 0L
+                    $watch = [Diagnostics.Stopwatch]::StartNew()
+                    $lastTick = [Diagnostics.Stopwatch]::StartNew()
+                    while (($read = $stream.Read($buffer, 0, $buffer.Length)) -gt 0) {
+                        $file.Write($buffer, 0, $read)
+                        $done += $read
+                        if ($lastTick.ElapsedMilliseconds -ge 400) {
+                            $lastTick.Restart()
+                            Write-TransferProgress -Done $done -Total $total -Elapsed $watch.Elapsed
+                        }
+                    }
+                    $watch.Stop()
+                    Write-TransferProgress -Done $done -Total $total -Elapsed $watch.Elapsed
+                    Write-Host ''
+                    Write-Host ('  下载完成：{0}，用时 {1:N1} 秒' -f (Format-TransferSize -Bytes $done), $watch.Elapsed.TotalSeconds) -ForegroundColor DarkGray
+                } finally {
+                    $file.Close()
+                    $stream.Close()
+                }
+            } finally {
+                $client.Dispose()
+            }
             return $Destination
         } catch {
+            Write-Host ''
             $lastError = $_.Exception.Message
-            Start-Sleep -Seconds 2
+            if (Test-Path -LiteralPath $Destination) { Remove-Item -LiteralPath $Destination -Force -ErrorAction SilentlyContinue }
+            Write-Host ('  第 {0} 次下载失败：{1}' -f $attempt, $lastError) -ForegroundColor DarkYellow
+            if ($attempt -lt 3) { Start-Sleep -Seconds 2 }
         }
     }
     throw ('下载失败：{0}' -f $lastError)

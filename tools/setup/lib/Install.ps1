@@ -191,9 +191,11 @@ function Install-CadMathPackage {
             } else {
                 Write-Warn -Stage 'VERIFY' '本次没有拿到安装包的校验值，改为逐个文件校验。'
             }
-            $bundleSource = Resolve-BundleFromArchive -Zip $SourcePath -WorkRoot $work
+            Write-Info -Stage 'EXTRACT' ('解压安装包：{0}' -f (Split-Path $SourcePath -Leaf))
+        $bundleSource = Resolve-BundleFromArchive -Zip $SourcePath -WorkRoot $work
         }
         $bundleInfo = Get-BundleInfo -Bundle $bundleSource
+        Write-Info -Stage 'VERIFY' ('逐文件校验 {0} 个文件…' -f @($Setup.files).Count)
         Test-BundleFiles -PackageRoot (Split-Path -Parent $bundleInfo.Bundle) -Files $Setup.files
         if ($bundleInfo.Version -ne $Setup.releaseVersion) {
             throw ('包版本 {0} 与发行清单 {1} 不一致。' -f $bundleInfo.Version, $Setup.releaseVersion)
@@ -568,6 +570,7 @@ function Install-CadMathGlobalBundle {
         if ($info.Version -ne [string]$Setup.releaseVersion) {
             throw ('安装包版本是 {0}，清单要求 {1}。' -f $info.Version, $Setup.releaseVersion)
         }
+        Write-Info -Stage 'VERIFY' ('逐文件校验 {0} 个文件…' -f @($Setup.files).Count)
         $null = Test-BundleFiles -PackageRoot (Split-Path -Parent $bundleRoot) -Files $Setup.files
         Write-Info -Stage 'VERIFY' ('包校验通过：{0} {1}' -f $info.Name, $info.Version)
 
