@@ -349,6 +349,12 @@ try {
         $st = Get-Content -LiteralPath (Join-Path $gState 'state.json') -Raw | ConvertFrom-Json
         $code -eq 0 -and -not (Test-Path -LiteralPath (Join-Path $gApps 'CadMath03.bundle')) -and $null -eq $st.installedVersion
     }
+    Check '旧式安装的存在判断以磁盘为准（缓存说还在、实际已删则不拦）' {
+        $ghost = [pscustomobject]@{ Present = $true; Path = (Join-Path $root 'no-such-bundle'); Version = '0.4.1' }
+        $real = [pscustomobject]@{ Present = $true; Path = $BundleDir; Version = '0.4.1' }
+        $absent = [pscustomobject]@{ Present = $false; Path = $BundleDir; Version = $null }
+        (-not (Test-LegacyInstallPresent -Legacy $ghost)) -and (Test-LegacyInstallPresent -Legacy $real) -and (-not (Test-LegacyInstallPresent -Legacy $absent))
+    }
     Check '启动批处理是 CRLF 且纯 ASCII（否则 cmd.exe 会解析错乱闪退）' {
         $launchers = @(
             (Join-Path $PSScriptRoot '..\CadMath-Setup.cmd'),

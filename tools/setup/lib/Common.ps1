@@ -154,3 +154,13 @@ function ConvertTo-ItemArray {
     }
     return ,$items
 }
+
+# 扫描结果是启动时的快照；判断"旧式安装还在不在"必须以磁盘为准，
+# 否则刚在菜单里卸载掉的 legacy bundle 会一直被当成还在，挡住后续安装。
+function Test-LegacyInstallPresent {
+    param($Legacy)
+    if ($null -eq $Legacy) { return $false }
+    if (-not $Legacy.Present) { return $false }
+    if (-not $Legacy.Path) { return $false }
+    return (Test-Path -LiteralPath $Legacy.Path)
+}

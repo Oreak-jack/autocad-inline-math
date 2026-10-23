@@ -230,7 +230,7 @@ function Resolve-LegacyBundle {
     # 旧式安装放在 ApplicationPlugins 里，会被同一台机器上所有 CAD 版本扫描到。
     # 如果不清掉它，新的按版本注册就会和它同时生效（一次按键处理两遍）。
     $legacy = $Scan.LegacyBundle
-    if ($legacy -eq $null -or -not $legacy.Present) { return $true }
+    if (-not (Test-LegacyInstallPresent -Legacy $legacy)) { return $true }
     Write-Warn -Stage 'LEGACY' ('检测到旧式安装：{0}（版本 {1}，全局生效）。' -f $legacy.Path, $legacy.Version)
     Write-Warn -Stage 'LEGACY' '它会与按版本注册的新安装同时生效，导致同一次按键被处理两次。'
     $approved = $false
@@ -581,6 +581,17 @@ function Get-Summary {
     }
 }
 
+# 每次操作完重新扫描一次：否则菜单里会拿着"操作前的快照"继续判断，
+# 刚卸载掉的旧式安装仍会被当成还在，刚装上的版本也不会显示出来。
+function Update-Environment {
+    param($Package)
+    $fresh = Invoke-EnvironmentScan -RegistryRoot $RegistryRoot -MachineRegistryRoot $MachineRegistryRoot -AppsRoot $AppsRoot -StateRoot $StateRoot
+    Write-Host ''
+    Write-Host '[检测结果已刷新]' -ForegroundColor White
+    Show-Detection -Scan $fresh -Setup $Package.Setup
+    return $fresh
+}
+
 # ---------------------------------------------------------------- 主流程
 Show-Banner
 Write-Info -Stage 'START' ('程序启动，工具版本 {0}' -f $ToolVersion)
@@ -672,9 +683,9 @@ try {
         Write-Host '  4. 退出'
         $choice = Read-Choice
         switch ($choice) {
-            1 { Invoke-InstallFlow -Scan $scan -Package $package; $didAction = $true }
-            2 { Invoke-UpdateFlow -Scan $scan -Package $package; $didAction = $true }
-            3 { Invoke-UninstallFlow -Scan $scan; $didAction = $true }
+            1 { Invoke-InstallFlow -Scan $scan -Package $package; $didAction = $true; $scan = Update-Environment -Package $package }
+            2 { Invoke-UpdateFlow -Scan $scan -Package $package; $didAction = $true; $scan = Update-Environment -Package $package }
+            3 { Invoke-UninstallFlow -Scan $scan; $didAction = $true; $scan = Update-Environment -Package $package }
             4 {
                 Write-Info -Stage 'EXIT' '用户选择退出'
                 if ($didAction) {
