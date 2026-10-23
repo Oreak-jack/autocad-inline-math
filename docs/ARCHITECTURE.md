@@ -181,10 +181,18 @@ public interface ICadAdapter
   `__CADMATH_VERSION__`（出现两处）；
 - `ProductInfo.Version` 从程序集读版本，`CM3STATUS` 不再写字面量。
 
-`build/build.ps1 -AcadDir "<AutoCAD 安装目录>"` 产出 `dist/CadMath03.bundle/` 与
-`dist/CadMath-InlineMath-<版本>.zip`。**无安装器版本**＝把 `CadMath03.bundle`
-整目录复制到 `%APPDATA%\Autodesk\ApplicationPlugins\`，或 `NETLOAD` 里面那个
-`CadMath03.dll`。
+`build/build.ps1 -AcadDir "<AutoCAD 安装目录>"` 产出 `dist/CadMath03.bundle/`、
+`dist/CadMath-InlineMath-<版本>.zip`、`dist/setup.json`（发行清单）与 `dist/SHA256SUMS.txt`。
+
+0.4.1 起分发由命令行安装器接管（`tools/setup/`，见 [INSTALLER.md](INSTALLER.md)）：
+负载放 `%LOCALAPPDATA%\CadMathInlineMath\payload\<版本>`，每个 CAD 版本写一条
+`HKCU\...\<release>\<product>\Applications\CadMathInlineMath` 注册项，所以各版本可以独立
+安装/更新/卸载；`adapters.json` 仍是运行时选择用的清单，`setup.json` 是发行侧清单
+（含逐文件 SHA-256 与适配器状态），两者 schema 各自独立。`setup.json` 由构建脚本生成，
+`ToolVersion` 与产品版本都来自 `Directory.Build.props`。
+
+仍可只复制 `CadMath03.bundle` 到 `%APPDATA%\Autodesk\ApplicationPlugins\`（0.4.0 的做法），
+但那是"全局一份"，安装器会把它识别为旧式安装并要求迁移。
 
 ## 10. 测试策略
 
@@ -194,6 +202,7 @@ public interface ICadAdapter
 | 清单解析 / 选择算法 / 宿主序列 | 同上 | 否 |
 | Shell 装配与适配器装载 | 真机冒烟：日志 + `CM3STATUS` | 是 |
 | 适配器行为（拦截、缓冲区、焦点） | 人工 UI 验收 + 日志核对 | 是 |
+| 安装器（扫描/匹配/安装/回滚/恢复） | `tools/setup/tests/Test-Setup.ps1`，假注册表根 + 临时状态目录 | 否 |
 
 v0.3.3 的 541 条解析断言与 45 条路由断言**原样搬过来**当作回归基准，
 新实现必须逐条通过；这是"逻辑可以借用"的硬证明（当前 617 条全绿）。
@@ -206,11 +215,13 @@ v0.3.3 的 541 条解析断言与 45 条路由断言**原样搬过来**当作回
 | M2 | Shell（入口/命令/日志/清单/选择/装载） | ✅ 选择与清单有单测；装配由真机日志验证 |
 | M3 | 现代适配器移植（焦点、缓冲区、提示事件） | ✅ 2026 真机拦截/改写/几何全部验证 |
 | M4 | 打包脚本 + 无安装器分发 + 文档 | ✅ `build/build.ps1` → `dist/`，`README` + 本文 + `IMPLEMENTATION.md` |
-| M5 | 安装器（安装/升级/卸载/回滚） | ⏳ 后置，接口与 bundle 布局已留好 |
+| M5 | 安装器（安装/升级/卸载/回滚/恢复） | ✅ 0.4.1：`tools/setup/` 命令行安装器，24 项自动化测试 |
 
 ## 12. 待定 / 已知风险
 
 - **ALC 卸载**：真机上从未触发过卸载路径（CAD 关闭即进程结束），"热替换适配器"仍属未验证能力。
-- **2024 适配器**：旧版 API 差异未调研，`legacy-r24` 只有接口与失败提示，`TryStart` 恒 false。
-- **改名代价**：`CadMath03` 程序集名、`CadMath03.bundle` 目录名、`ProductCode`/`UpgradeCode`
-  保留不动，否则老用户升级会并存两套或被现有 `install.json` 的 `Target` 校验挡住。
+- **2024 适配器**：旧版 API 差异未调研，`legacy-r24` 只有接口与失败提示，`TryStart` 恒 false，清单里标 `planned`（安装器会跳过，不会装一个跑不起来的适配器）。
+- **构建区间匹配未启用**：`setup.json` 的 `buildRange` 目前留空，匹配只按版本系列；等拿到实测可用区间再填。
+- **改名代价**：`CadMath03` 程序集名、`ProductCode`/`UpgradeCode` 保留不动，否则老用户升级会并存两套。
+  （`CadMath03.bundle` 目录名只有在手动安装时才会出现；按版本注册用的是 `LOADER` 指向的 dll 路径。）
+- **`ApplicationPlugins` 旧式安装**：不在注册表里、被所有 CAD 版本共享，安装器只能"移到备份"而无法按实例管理。

@@ -1,13 +1,14 @@
 ﻿#requires -Version 5.1
 <#
 .SYNOPSIS
-    构建 CadMath03.bundle（无需安装器的分发包）。
+    构建 CadMath03.bundle、命令行安装器与发行包。
 
 .DESCRIPTION
     1. 从 Directory.Build.props 读取唯一版本号；
     2. 编译 Shell 与两个适配器；
     3. 组装 bundle 目录结构，并把版本写进 PackageContents.xml；
-    4. 可选打成 zip。
+    4. 生成 setup.json（发行清单：逐文件 SHA-256 + 适配器状态）；
+    5. 组装发行 zip（bundle + 安装器 + setup.json）并生成 SHA256SUMS.txt。
 
 .EXAMPLE
     powershell -ExecutionPolicy Bypass -File build\build.ps1 -AcadDir "D:\AutoCAD 2026"
@@ -110,13 +111,84 @@ acmgd 文件版本: $acmgdVersion
 适配器: $(Get-ChildItem $adapterDir -Filter *.dll | ForEach-Object { $_.Name }) 
 "@ | Set-Content -Path (Join-Path $bundle 'BUILD-INFO.txt') -Encoding UTF8
 
+# ---- 发行清单 setup.json ------------------------------------------------
+$runtimeManifest = Get-Content -Raw -Encoding UTF8 (Join-Path $win64 'adapters.json') | ConvertFrom-Json
+if (-not $runtimeManifest.adapters -or @($runtimeManifest.adapters).Count -eq 0) {
+    throw '运行时清单 adapters.json 里没有适配器。'
+}
+
+$releaseAdapters = @()
+foreach ($adapter in @($runtimeManifest.adapters)) {
+    $status = 'built'
+    if ($adapter.PSObject.Properties['status'] -and $adapter.status) {
+        $status = [string]$adapter.status
+    } elseif ($adapter.verified -eq $true) {
+        $status = 'host-tested'
+    }
+    $releaseAdapters += [ordered]@{
+        id           = [string]$adapter.id
+        path         = 'Contents/Win64/Adapters/' + [string]$adapter.assembly
+        cadSeries    = @($adapter.series)
+        runtime      = [string]$adapter.runtime
+        architecture = 'x64'
+        status       = $status
+        evidence     = @()
+        limitations  = @()
+    }
+}
+
+$files = @()
+foreach ($item in @(Get-ChildItem -LiteralPath $bundle -Recurse -File | Sort-Object FullName)) {
+    $relative = $item.FullName.Substring($bundle.Length + 1).Replace('\', '/')
+    $files += [ordered]@{
+        path   = $relative
+        size   = $item.Length
+        sha256 = (Get-FileHash -LiteralPath $item.FullName -Algorithm SHA256).Hash.ToLowerInvariant()
+    }
+}
+
+$setup = [ordered]@{
+    schemaVersion  = 1
+    product        = 'CadMath'
+    productCode    = '{04913737-F911-4978-9F6B-2DB24F3DCC03}'
+    releaseVersion = $version
+    toolVersion    = $version
+    bundleName     = 'CadMath03.bundle'
+    entryAssembly  = 'Contents/Win64/CadMath03.dll'
+    zip            = [ordered]@{ name = "CadMath-InlineMath-$version.zip" }
+    supportedSeries = @($releaseAdapters | ForEach-Object { $_.cadSeries } | ForEach-Object { $_ } | Sort-Object -Unique)
+    adapters       = $releaseAdapters
+    files          = $files
+}
+$setupJson = $setup | ConvertTo-Json -Depth 8
+[IO.File]::WriteAllText((Join-Path $dist 'setup.json'), $setupJson, (New-Object Text.UTF8Encoding($false)))
+
+# ---- 安装器 -------------------------------------------------------------
+Copy-Item (Join-Path $root 'tools\setup\CadMath-Setup.cmd') $dist
+$distTools = Join-Path $dist 'tools\setup'
+New-Item -ItemType Directory -Path $distTools -Force | Out-Null
+Copy-Item -Path (Join-Path $root 'tools\setup\*') -Destination $distTools -Recurse -Force
+
 Write-Host ''
-Get-ChildItem $bundle -Recurse -File | ForEach-Object { '  ' + $_.FullName.Substring($bundle.Length + 1) }
+Get-ChildItem $bundle -Recurse -File | ForEach-Object { '  ' + $_.FullName.Substring($dist.Length + 1) }
 
 if (-not $NoZip) {
     $zip = Join-Path $dist ("CadMath-InlineMath-$version.zip")
-    Compress-Archive -Path $bundle -DestinationPath $zip -Force
+    $items = @(
+        $bundle,
+        (Join-Path $dist 'CadMath-Setup.cmd'),
+        (Join-Path $dist 'tools'),
+        (Join-Path $dist 'setup.json')
+    )
+    Compress-Archive -Path $items -DestinationPath $zip -Force
+    $zipHash = (Get-FileHash -LiteralPath $zip -Algorithm SHA256).Hash.ToLowerInvariant()
+    $sums = '{0}  {1}' -f $zipHash, (Split-Path $zip -Leaf)
+    [IO.File]::WriteAllText((Join-Path $dist 'SHA256SUMS.txt'), $sums + "`n", (New-Object Text.UTF8Encoding($false)))
     Write-Host "`n  打包: $zip"
+    Write-Host "  校验: $zipHash"
 }
 
-Write-Host "`n完成。把 CadMath03.bundle 复制到 %APPDATA%\Autodesk\ApplicationPlugins\ 后重启 CAD。"
+Write-Host ''
+Write-Host '完成。'
+Write-Host '  推荐：解压发行 zip，双击 CadMath-Setup.cmd（关掉 AutoCAD 后运行，按版本注册）。'
+Write-Host '  手动：把 CadMath03.bundle 复制到 %APPDATA%\Autodesk\ApplicationPlugins\ 后重启 CAD（全局一份，所有版本共享）。'

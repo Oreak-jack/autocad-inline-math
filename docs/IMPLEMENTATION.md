@@ -1,4 +1,4 @@
-# 实施记录：0.3.3 → 0.4.0
+# 实施记录：0.3.3 → 0.4.1
 
 这份文档回答四个问题：原来那些代码去了哪、新架构怎么跑起来、哪些对外行为绝对不能变、以及怎么证明它没变。
 设计意图见 [ARCHITECTURE.md](ARCHITECTURE.md)（计划版，部分命名在实施时做了调整，以本文为准）。
@@ -48,7 +48,7 @@
 | --- | --- |
 | `tests/Tests.csproj` 用 `<Compile Include="../src/*.cs">` 把源码编进测试 | `tests/CadMath.Tests` 用 `ProjectReference`，物理边界成立 |
 | 手工 `Compress-Archive` + 手写 `SHA256SUMS.txt` | `build/build.ps1` 一条命令出 bundle 与 zip |
-| `installer/`（`Install.ps1` 210 行 WinForms + `Install-Core.ps1` 259 行） | 0.4.0 不含；`PackageContents.xml` 与 bundle 结构保持兼容，后续安装器直接复用 |
+| `installer/`（`Install.ps1` 210 行 WinForms + `Install-Core.ps1` 259 行） | 0.4.0 拿掉；0.4.1 以 `tools/setup/` 命令行安装器接回（见第 7 节） |
 | 版本号写在 4 处（csproj、PackageContents 两处、README） | `Directory.Build.props` 唯一来源，打包时注入 XML |
 | `startup/CadMath03-Startup.lsp`（`.NETLOAD`） | 不需要：bundle 的 `LoadOnAutoCADStartup=True` 已负责加载 |
 
@@ -74,7 +74,7 @@ AutoCAD 扫描 ApplicationPlugins → 加载 Contents/Win64/CadMath03.dll
        │    │     · 不是 ICadAdapter / Id 与清单不符 → load-failed / missing-type / id-mismatch
        │    │     · TryStart 返回 false → start-failed，继续下一个候选
        │    └─ 成功 → Active、Enabled=true
-       └─ 命令行输出 "CadMath 0.4.0 底部命令栏计算已启用…" 或 "未启用：<原因>"
+       └─ 命令行输出 "CadMath 0.4.1 底部命令栏计算已启用…" 或 "未启用：<原因>"
 ```
 
 装载上下文（`AdapterManager.AdapterLoadContext`）的关键点：
@@ -154,12 +154,55 @@ PreTranslateMessage(msg)
 
 验证用的输入都来自命令行模拟按键（`WScript.Shell.SendKeys`），不涉及脚本文件；含双引号的字符串会被 `SendKeys` 拒绝（`ArgumentException`），所以几何核对改看特性面板而不是回读文件。
 
+上表是 0.4.0 的实测记录。0.4.1 只新增安装器与 `setup.json`，计算层、拦截适配器与命令行为都没有改动，因此 `checks=617` 仍是同一套基准。
+
 ---
 
 ## 6. 遗留
 
-- **安装器**：下一阶段。可复用 `PackageContents.xml`、bundle 布局与 ProductCode；需要重新实现注册表 `TRUSTEDPATHS`、`Appload` 迁移、事务回滚与 SHA256 校验。
-- **R24 适配器**：`legacy-r24` 已占位（清单、装载、失败提示全通），实现需要 24.x 的 `acmgd` 引用程序集；输入管线在 2024 上差异较大，不能靠改版本号复用。
+- **R24 适配器**：`legacy-r24` 已占位（清单、装载、失败提示全通），实现需要 24.x 的 `acmgd` 引用程序集；输入管线在 2024 上差异较大，不能靠改版本号复用。清单里标 `planned`，安装器会跳过而不是装一个跑不起来的适配器。
 - **面板输入**：目前只认底部命令行。要支持浮动命令行，需要识别 `Autodesk.AutoCAD.Windows.Palette` 里的编辑框，属于新适配器能力，不是 Shell 的事。
 - **去重策略的边界**：依赖 `WM_KEYDOWN` 先于 `WM_CHAR` 到达。若某个版本顺序不同，`_consumedKeyDownKey` 不会命中，表现为重复改写——日志里成对的 `replacement_requested` 就是信号，应优先查这里。
-- **CI**：目前只有本机构建脚本，还没有 Windows 上的编译流水线；`tests` 本身可在 Linux 跑。
+- **构建区间匹配**：`setup.json` 的 `buildRange` 留空，只按版本系列匹配；等有实测可用区间再填，填了就比 `planned` 更严格。
+- **CI**：`.github/workflows/tests.yml` 只跑计算层测试（Linux）；Windows 上的编译（需要 Autodesk 程序集）仍是本地脚本。
+
+---
+
+## 7. 0.4.1：安装器
+
+### 7.1 旧安装器的职责去了哪
+
+| 0.3.3 `installer/Install-Core.ps1` | 0.4.1 位置 |
+| --- | --- |
+| `Get-CadProducts`（只认 R25.0/R25.1） | `tools/setup/lib/Environment.ps1` `Invoke-EnvironmentScan`（枚举 `HKCU` 全部 `R2x.y` 产品，全部可用） |
+| `Assert-CadClosed` | `lib/Common.ps1` `Assert-CadClosed`（测试可用 `CADMATH_SETUP_ALLOW_CAD_RUNNING=1` 绕过） |
+| `Get-BundleInfo`（bundle 版本三方一致校验） | `lib/Common.ps1` `Get-BundleInfo`（保留同样的校验） |
+| `Expand-CadArchive`（zip 安全解压） | `lib/Common.ps1` `Expand-CadBundleArchive`（条目数/体积上限、拒绝越界与符号链接） |
+| `Test-ArchiveHash` | `lib/Common.ps1` `Test-FileSha256` + `lib/Install.ps1` `Test-BundleFiles`（逐文件校验） |
+| `Get/Set-CadRegistration`（全局 `ApplicationPlugins` + `TRUSTEDPATHS` + `Appload` 迁移） | `lib/Registry.ps1`（按版本写 `Applications\CadMathInlineMath` + 精确维护 `TRUSTEDPATHS`，不再迁移 `Appload`） |
+| `Install-CadBundle`（快照 → 暂存 → 复制 → 出错回滚） | `lib/Install.ps1` `Install-CadMathPackage`（额外：`pending.json` journal、逐实例匹配、回滚后验证） |
+| `Install.ps1`（WinForms 界面、Timer 轮询下载） | `tools/setup/CadMath-Setup.ps1`（命令行菜单 + `lib/Release.ps1` 同步下载） |
+| 无 | `Uninstall-CadMathInstances` + `Remove-InstanceRegistration`（旧版没有卸载） |
+
+### 7.2 部署位置
+
+- 负载：`%LOCALAPPDATA%\CadMathInlineMath\payload\<版本>\`（整份 bundle 内容）
+- 注册：`HKCU\Software\Autodesk\AutoCAD\<release>\<product>\Applications\CadMathInlineMath`
+  （`LOADER` 指向 payload 里的 `CadMath03.dll`，`LOADCTRLS=2`，`MANAGED=1`）
+- 受信任路径：每个配置的 `Variables\TRUSTEDPATHS` 追加 `...\Contents\Win64` 与 `...\Contents\Win64\Adapters`
+
+选这条路的原因：`%APPDATA%\Autodesk\ApplicationPlugins` 的 bundle 是**所有 CAD 版本共享**的，无法按实例升级或卸载；按版本注册才能做到"每个实例独立"，而且全在 `HKCU`，不需要管理员。
+
+### 7.3 验证记录（2026-10-23）
+
+| 项目 | 做法 | 结果 |
+| --- | --- | --- |
+| 清单 | `Read-SetupManifest dist\setup.json` | 8 个文件、`modern-r25=host-tested`、`legacy-r24=planned` |
+| 匹配 | 假实例 2024 / 2026 | 2024 → `series-mismatch` + `status-planned`；2026 → `modern-r25` |
+| 安装 | 隔离状态根 + 假注册表，`-Install <实例> -Yes` | 退出码 0，注册项/负载/`state.json`/`TRUSTEDPATHS` 全部正确 |
+| 幂等 | 重复安装同一版本 | 视为修复，退出码 0 |
+| 回滚 | `CADMATH_SETUP_INJECT_FAILURE=register` | 退出码 3，日志 `已恢复安装前的注册表与负载状态`，旧安装完好、`pending.json` 不存在 |
+| 崩溃恢复 | 手工造 journal + 挪走旧负载 | `Restore-PendingTransaction` 恢复版本与负载，journal 清除 |
+| 卸载 | `-Remove <实例>` | 注册项消失、`TRUSTEDPATHS` 回到原值、无实例引用时删 payload |
+| 安全 | CAD 运行中 | 拒绝安装并提示关闭 CAD |
+| 全部用例 | `tools\setup\tests\Test-Setup.ps1` | **通过 24 项，失败 0 项** |

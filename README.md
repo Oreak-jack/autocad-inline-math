@@ -5,23 +5,24 @@
 在 AutoCAD 命令行里直接写算式：`100-30` 回车就是 `70`，`@100-30,0` 就是相对坐标 `@70,0`。
 支持长度、角度、坐标等所有"提示输入"的场景，不需要记命令、不需要开计算器、不跳出 CAD。
 
-当前版本 **0.4.0**，支持 AutoCAD 2025 / 2026（R25.0 / R25.1）。
+当前版本 **0.4.1**，支持 AutoCAD 2025 / 2026（R25.0 / R25.1）。用命令行安装器 `CadMath-Setup.cmd` 安装、更新、卸载，见 [docs/INSTALLER.md](docs/INSTALLER.md)。
 
 ---
 
-## 0.4.0 与 0.3.3 的关系
+## 0.4.1 与 0.3.3 的关系
 
-0.3.3 是一个 155 行的 `Plugin.cs` 同时兼任程序集入口、命令、键盘拦截、状态机、日志和焦点探测，外加手工打包脚本和一个 470 行的 PowerShell 安装器。能用，但改一处要读全部。
+0.3.3 是一个 155 行的 `Plugin.cs` 同时兼任程序集入口、命令、键盘拦截、状态机、日志和焦点探测，外加手工打包脚本和一个 470 行、只认全局 `ApplicationPlugins` 的 PowerShell 安装器。能用，但改一处要读全部。
 
-0.4.0 把同样的功能按职责拆开，并且**先去掉安装器**（下一阶段再加回来）：
+0.4.x 把同样的功能按职责拆开。0.4.0 先只做拆分、拿掉安装器；0.4.1 把安装器以**命令行工具 + 按版本注册**的形式接回来：
 
-| | 0.3.3 | 0.4.0 |
+| | 0.3.3 | 0.4.1 |
 | --- | --- | --- |
 | 计算与判定 | `Expression.cs` + `InputPolicy.cs` 被测试工程直接编译 | 独立的 `CadMath.Core` / `CadMath.Abstractions` 程序集 |
 | 键盘拦截 | `Plugin.cs` 里所有东西混在一起 | `CadMath.Adapter.Modern`（唯一接触 AutoCAD 输入管线的模块） |
 | 生命周期 / 命令 | 同一个 `Plugin.cs` | `CadMath.Shell`（只有装配与转发） |
 | 多版本 | 无 | `adapters.json` + 适配器注册/选择/装载 |
-| 分发 | 安装器 | 复制 `CadMath03.bundle` 到一个目录 |
+| 安装位置 | 全局 `ApplicationPlugins`，所有 CAD 版本共享 | `%LOCALAPPDATA%` 下的受管负载 + 每个 CAD 版本一条 `HKCU` 注册 |
+| 安装器 | WinForms 图形界面，无卸载 | 纯命令行，安装/更新/卸载/回滚 + 事务日志 |
 
 行为上两者逐条对齐：`tests/CadMath.Tests` 里 617 条断言（数学 541 + 路由 45 + 宿主序列/清单/选择 31）与 0.3.3 完全一致。
 
@@ -31,12 +32,18 @@
 
 ```
 CadMath.sln
-Directory.Build.props          版本号的唯一来源（0.4.0）
-adapters/adapters.json         适配器清单（随包分发）
+Directory.Build.props          版本号的唯一来源（0.4.1）
+adapters/adapters.json         适配器清单（随包分发，运行时选择用）
 bundle/PackageContents.xml     包描述模板，打包时注入版本
-build/build.ps1                一条命令产出 bundle + zip
-docs/ARCHITECTURE.md           分层设计（计划版）
+build/build.ps1                一条命令产出 bundle + zip + setup.json + SHA256SUMS.txt
+docs/ARCHITECTURE.md           分层设计
 docs/IMPLEMENTATION.md         实施记录：职责映射、时序、不变式、验证
+docs/INSTALLER.md              命令行安装器：安装位置、匹配规则、事务与回滚
+tools/setup/                   命令行安装器（PowerShell 5.1）
+  CadMath-Setup.cmd            入口
+  CadMath-Setup.ps1            菜单与流程
+  lib/                         扫描、清单、注册表、安装/回滚、发行版访问
+  tests/Test-Setup.ps1         安装器自动化测试（24 项）
 src/
   CadMath.Abstractions/        契约层：PromptKind、Decision/Conversion、ICadAdapter、清单模型、HostSeries、选择算法
   CadMath.Core/                纯计算：表达式求值、坐标转换、输入判定（不引用任何 AutoCAD 程序集）
@@ -58,17 +65,24 @@ Adapter.* ──▶ Abstractions ◀── Core
 
 ---
 
-## 安装（免安装器）
+## 安装
 
-AutoCAD 会在启动时扫描 `%APPDATA%\Autodesk\ApplicationPlugins` 下的 `*.bundle` 目录，所以"安装"就是复制目录：
+推荐用安装器（关掉 AutoCAD 后双击 `CadMath-Setup.cmd`，按提示操作）：
 
-1. 关闭所有 AutoCAD（bundle 只在启动时被扫描）。
-2. 把 `dist\CadMath03.bundle` 整个目录复制到
-   `C:\Users\<你>\AppData\Roaming\Autodesk\ApplicationPlugins\CadMath03.bundle`。
-3. 启动 AutoCAD，命令行出现
-   `CadMath 0.4.0 底部命令栏计算已启用。关闭：CM3OFF；状态：CM3STATUS。`
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\CadMath-Setup.ps1
+```
 
-卸载 = 关闭 CAD 后删除该目录。旧版 0.3.3 也装在这里时，直接覆盖同名目录即可（ProductCode / UpgradeCode 未变，升级路径连续）。
+它会把负载放到 `%LOCALAPPDATA%\CadMathInlineMath\payload\<版本>`，并给检测到的每个 CAD 版本写一条 `HKCU` 注册，所以每个实例都能独立安装、更新、卸载。细节见 [docs/INSTALLER.md](docs/INSTALLER.md)。
+
+手动安装仍然可行（等于 0.4.0 的做法）：关闭 AutoCAD → 把 `dist\CadMath03.bundle` 复制到
+`%APPDATA%\Autodesk\ApplicationPlugins\CadMath03.bundle` → 启动。注意这样装的是"全局"的一份，所有 CAD 版本共享，安装器会把它识别为旧式安装。
+
+装好后 AutoCAD 命令行会出现：
+
+```
+CadMath 0.4.1 底部命令栏计算已启用。关闭：CM3OFF；状态：CM3STATUS。
+```
 
 ---
 
@@ -138,10 +152,13 @@ dist/CadMath03.bundle/                可直接复制的包
     adapters.json
     Adapters/CadMath.Adapter.Modern.dll
     Adapters/CadMath.Adapter.Legacy.dll
-dist/CadMath-InlineMath-0.4.0.zip     整包压缩（-NoZip 可跳过），解压即得上面这个目录
+dist/setup.json                       发行清单：版本、zip 校验值、逐文件 SHA-256、适配器状态
+dist/tools/setup/                     安装器（随 zip 分发）
+dist/CadMath-InlineMath-0.4.1.zip     整包压缩（-NoZip 可跳过）：bundle + 安装器 + setup.json
+dist/SHA256SUMS.txt                   zip 的 SHA-256（旧安装器格式，便于人工核对）
 ```
 
-版本号只写在 `Directory.Build.props`（`<Version>0.4.0</Version>`），程序和 `PackageContents.xml` 都从那里取。
+版本号只写在 `Directory.Build.props`（`<Version>0.4.1</Version>`），程序和 `PackageContents.xml` 都从那里取；zip 名与 `setup.json` 里的版本也来自同一处。
 
 两个本机会踩的坑，脚本事先规避了：
 
@@ -166,6 +183,13 @@ dotnet run --project tests\CadMath.Tests -c Release
 
 测试工程零 NuGet 依赖，直接跑在 `net8.0` 上，CI 不需要 Windows 或 AutoCAD。
 真实 CAD 里的行为（拦截、改写、几何落地）不在自动化范围内，靠人工冒烟和 `%TEMP%\CadMath03.log` 核对。
+
+安装器另有 24 项自动化测试（不会动真实安装：临时状态目录 + 假注册表根）：
+
+```powershell
+powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\tests\Test-Setup.ps1
+# 通过 24 项，失败 0 项
+```
 
 ---
 
@@ -207,7 +231,7 @@ dotnet run --project tests\CadMath.Tests -c Release
 ## 日志与诊断
 
 - 路径：`%TEMP%\CadMath03.log`（超过 1 MB 停止写入）。
-- 关键行：`shell 0.4.0 start; host=R25.1`、`adapter modern-r25 active`、`replacement_requested 100-30 => 70 command=LINE msg=0x100`、`adapter failure, interception disabled`。
+- 关键行：`shell 0.4.1 start; host=R25.1`、`adapter modern-r25 active`、`replacement_requested 100-30 => 70 command=LINE msg=0x100`、`adapter failure, interception disabled`。
 - `CM3STATUS` 会输出开关状态、活动适配器、替换次数、最后一次错误、日志路径，以及被排除的适配器及原因。
 - 想在没有 CAD 的环境里验证探测逻辑，可设 `CADMATH_HOST_SERIES=R25.1`。
 
@@ -217,8 +241,9 @@ dotnet run --project tests\CadMath.Tests -c Release
 
 - 只支持底部命令行输入，不支持浮动命令行面板与对话框。
 - 适配器抛异常时会**保护性关闭**拦截（fail closed），需手动 `CM3ON`；这样绝不会把错误输入塞进图形。
-- 真实适配器目前只有 R25.x；2024 及更早只有占位。
-- 安装器（安装/升级/卸载/回滚、注册表与受信任路径处理）不属于 0.4.0，下一阶段接回来。
+- 真实适配器目前只有 R25.x；2024 及更早只有占位（`status=planned`，安装器会跳过该实例）。
+- 安装器只认 `%LOCALAPPDATA%` 下自己的负载与 `HKCU` 注册；手工放进 `ApplicationPlugins` 的旧式安装会被识别为"旧式"，需要迁移一次才能按版本独立管理。
+- 更新只走 GitHub Releases，网络不可用时安装与卸载仍然可用。
 
 ## 许可
 
