@@ -105,6 +105,11 @@ function Copy-BundleToPayload {
     foreach ($item in @(Get-ChildItem -LiteralPath $Source -Force)) {
         Copy-Item -LiteralPath $item.FullName -Destination $Destination -Recurse -Force
     }
+    # 复制会连 "来自网络" 标记一起带过来，必须抹掉，否则 .NET Framework 拒绝加载（0x80131515）。
+    $cleared = Clear-NetworkMark -Path $Destination
+    if ($cleared -gt 0) {
+        Write-Info -Stage 'UNBLOCK' ('已解除 {0} 个文件的"来自网络"标记（否则 .NET Framework 会拒绝加载）' -f $cleared)
+    }
 }
 
 function Get-OwnedDirectories {
@@ -607,6 +612,10 @@ function Install-CadMathGlobalBundle {
             }
 
             Copy-Item -LiteralPath $source -Destination $entry.Path -Recurse -Force
+            $cleared = Clear-NetworkMark -Path $entry.Path
+            if ($cleared -gt 0) {
+                Write-Info -Stage 'UNBLOCK' ('已解除 {0} 个文件的"来自网络"标记' -f $cleared)
+            }
             if (-not (Test-Path -LiteralPath (Join-Path $entry.Path 'PackageContents.xml'))) {
                 throw ('复制后的目录里没有 PackageContents.xml：{0}' -f $entry.Path)
             }

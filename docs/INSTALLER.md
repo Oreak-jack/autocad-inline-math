@@ -103,6 +103,20 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\CadMath-Setup.ps
 0.4.7 起这五步都带可见进度：`1/5 连接与版本查询`（含重试次数与耗时）、`2/5 下载并校验清单`、
 `3/5 下载安装包`（每 0.4 秒刷新"已下载 X / Y（百分比），速度"）、`4/5 解压、逐文件校验、替换负载并注册`。
 下载与解压都发生在 `%TEMP%\cadmath-update-<随机>`，流程结束后整个目录删除。
+### 从浏览器下载的 zip 会带「来自网络」标记
+
+Windows 会给下载来的文件加 `Zone.Identifier` 数据流。.NET Framework 因此拒绝 `Assembly.LoadFrom`，
+`NETLOAD` 会报 `0x80131515 不支持操作`，在 AutoCAD 2024 上表现为插件装好了却没有任何命令。
+
+0.4.9 起安装器在把文件复制进 `payload` 之后统一调用 `Clear-NetworkMark` 抹掉标记，
+日志里会出现 `[UNBLOCK] 已解除 N 个文件的"来自网络"标记`。
+老版本装出来的负载可以手动补救：先关 CAD，然后执行
+
+```powershell
+Get-ChildItem "$env:LOCALAPPDATA\CadMathInlineMath\payload" -Recurse -File | Unblock-File
+```
+
+再启动 CAD 即可。
 
 > **0.4.5 及更早的更新流程是坏的**：清单里没有 `zip` 段，而 StrictMode 下访问 `$Setup.zip` 会抛
 > "找不到属性 zip"，下载完就失败。0.4.6 起改为用 `Get-SetupField` 读可选字段，构建时也重新写入

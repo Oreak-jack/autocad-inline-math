@@ -114,7 +114,33 @@ function Expand-CadBundleArchive {
             $files.Add($path)
         }
     } finally { $archive.Dispose() }
+    $null = Clear-NetworkMark -Path $root
     return $files.ToArray()
+}
+
+function Clear-NetworkMark {
+    # 从浏览器下载的 zip 解出来的文件带着 "来自网络" 标记（Zone.Identifier 数据流），
+    # .NET Framework 会因此拒绝 LoadFrom，报 0x80131515「不支持操作」。
+    # 安装器把它们复制进 payload 时一并抹掉标记，否则 AutoCAD 2024 起不来插件。
+    param([string]$Path)
+    if ([string]::IsNullOrWhiteSpace($Path)) { return 0 }
+    if (-not (Test-Path -LiteralPath $Path)) { return 0 }
+    $cleared = 0
+    foreach ($file in @(Get-ChildItem -LiteralPath $Path -Recurse -File -Force -ErrorAction SilentlyContinue)) {
+        $has = $false
+        try {
+            $null = Get-Item -LiteralPath $file.FullName -Stream Zone.Identifier -ErrorAction Stop
+            $has = $true
+        } catch { $has = $false }
+        if (-not $has) { continue }
+        try {
+            Remove-Item -LiteralPath $file.FullName -Stream Zone.Identifier -ErrorAction Stop
+            $cleared++
+        } catch {
+            try { Unblock-File -LiteralPath $file.FullName -ErrorAction Stop; $cleared++ } catch { }
+        }
+    }
+    return $cleared
 }
 
 function Test-FileSha256 {

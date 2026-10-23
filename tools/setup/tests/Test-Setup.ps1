@@ -470,6 +470,37 @@ try {
         $loader = (Get-ItemProperty -LiteralPath $key).LOADER
         (Test-Path -LiteralPath $loader) -and $loader -like "*$zipState*"
     }
+    Check '从带"来自网络"标记的目录安装后，负载文件不再被标记（0.4.8 在 2024 上的加载失败）' {
+        # 复现 2024 机器：浏览器下载的 zip 解出来的 dll 带 Zone.Identifier，
+        # .NET Framework 的 LoadFrom 会以 0x80131515 拒绝加载。
+        $markedPackage = Join-Path $root 'pkg-marked'
+        $markedBundle = Join-Path $markedPackage 'CadMath03.bundle'
+        if (-not (Test-Path -LiteralPath $markedBundle)) {
+            # 清单的 files[] 覆盖三个 bundle，所以整个发行包都要复制过来。
+            New-Item -ItemType Directory -Path $markedPackage -Force | Out-Null
+            foreach ($bundleDir in @(Get-ChildItem -LiteralPath (Split-Path -Parent $BundleDir) -Directory -Filter '*.bundle')) {
+                Copy-Item -LiteralPath $bundleDir.FullName -Destination (Join-Path $markedPackage $bundleDir.Name) -Recurse -Force
+            }
+            foreach ($dll in @(Get-ChildItem -LiteralPath $markedPackage -Recurse -File -Filter '*.dll')) {
+                Set-Content -LiteralPath $dll.FullName -Stream 'Zone.Identifier' -Value ("[ZoneTransfer]`r`nZoneId=3`r`n") -Encoding Ascii
+            }
+        }
+        $markedState = Join-Path $root 'state-marked'
+        $cliArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $entry,
+            '-Install', 'R25.1\ACAD-9101:804', '-Yes', '-FromBundle', $markedBundle,
+            '-SetupJson', $SetupJson, '-StateRoot', $markedState, '-RegistryRoot', $cli.RegistryRoot,
+            '-MachineRegistryRoot', $cli.MachineRegistryRoot, '-AppsRoot', $cli.AppsRoot)
+        $markedOut = & $powershell @cliArgs 2>&1 | Out-String
+        if ($LASTEXITCODE -ne 0) { throw ('退出码 {0}：{1}' -f $LASTEXITCODE, $markedOut) }
+        $markedVersion = [string]$setup.releaseVersion
+        $payloadDll = Join-Path $markedState ('payload\' + $markedVersion + '\Contents\Win64\CadMath03.dll')
+        if (-not (Test-Path -LiteralPath $payloadDll)) { throw ('负载里没有 {0}' -f $payloadDll) }
+        $left = 0
+        foreach ($file in @(Get-ChildItem -LiteralPath (Join-Path $markedState ('payload\' + $markedVersion)) -Recurse -File)) {
+            try { $null = Get-Item -LiteralPath $file.FullName -Stream Zone.Identifier -ErrorAction Stop; $left++ } catch { }
+        }
+        $left -eq 0
+    }
     if (@(Get-CadProcess).Count -gt 0) {
         Check 'CAD 正在运行时拒绝安装（未进入测试模式）' {
             $env:CADMATH_SETUP_ALLOW_CAD_RUNNING = $null
