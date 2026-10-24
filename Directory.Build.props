@@ -13,6 +13,13 @@
     <DebugType>none</DebugType>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
 
+    <!-- 许可与作者元数据：0.5.3 起改为 GPL-3.0-or-later（见 LICENSE）。 -->
+    <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
+    <Authors>Oreak-jack</Authors>
+    <Product>CadMath03 (AutoCAD Inline Math)</Product>
+    <RepositoryUrl>https://github.com/Oreak-jack/autocad-inline-math</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+
     <!-- AutoCAD 托管引用目录；构建适配器时需要，例如 -p:AcadDir="D:\AutoCAD 2026" -->
     <AcadDir Condition="'$(AcadDir)' == ''">$(ACAD_REFERENCE_DIR)</AcadDir>
 
