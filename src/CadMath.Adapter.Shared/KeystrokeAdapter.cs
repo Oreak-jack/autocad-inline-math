@@ -279,6 +279,8 @@ public abstract class KeystrokeAdapter : ICadAdapter
 
         try
         {
+            // 注意：AutoCAD 没有公开的“当前命令行文本 / 写回”API（Editor 上也没有 CommandLineText），
+            // 这条路径只能用反射类型链读 InputBuffer（与 0.3.3 相同）。
             var buffer = AcApp.UIBindings.CommandEditorManager.ActiveEditor?.PromptAndInput?.InputBuffer;
             if (buffer is null) return;
             if (buffer.IsPromptingForCommandName()) return;
@@ -397,10 +399,14 @@ public abstract class KeystrokeAdapter : ICadAdapter
         }
     }
 
-    /// <summary>绝不要往属性面板/对话框的 TextBox 里写，即使当时正在画图。</summary>
-    private static bool AllowedFocus(Document document)    {
+    /// <summary>
+    /// 绝不要往属性面板/对话框的 TextBox 里写，即使当时正在画图。
+    /// 先看 WPF 焦点是不是文本框，再交给窗口层（命令行窗口本身、它的子窗口、
+    /// 已知窗口类）判定；这里刻意不去比较 CAD 内部命名空间里的类型名。
+    /// </summary>
+    private static bool AllowedFocus(Document document)
+    {
         var focused = Keyboard.FocusedElement;
-        if (focused?.GetType().FullName == "Autodesk.AutoCAD.ViewModel.CommandLine.CommandLineTextBox") return true;
         if (focused is System.Windows.Controls.TextBox) return false;
         return AllowedFocusByWindow(document);
     }
