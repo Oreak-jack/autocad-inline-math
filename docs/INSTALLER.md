@@ -20,7 +20,8 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\CadMath-Setup.ps
   1. 安装插件
   2. 检查是否有最新版本，有就安装
   3. 卸载该插件
-  4. 退出
+  4. 回滚到上一个版本（用备份恢复）
+  5. 退出
 ```
 
 安装时需要同目录（或 `-SetupJson` / `-FromBundle` 指定）有 `setup.json` 与 `CadMath03.bundle`，正式发布的 zip 解压后就是这个布局。
@@ -117,6 +118,15 @@ Get-ChildItem "$env:LOCALAPPDATA\CadMathInlineMath\payload" -Recurse -File | Unb
 ```
 
 再启动 CAD 即可。
+### 回滚到上一个版本（0.5.0）
+
+菜单 4（或 `CadMath-Setup.ps1 -Rollback [-Yes]`）会把 `backups` 里最新的那份快照恢复回来：
+备份负载复制成 `payload\<备份名>-restore-<随机>` → 按实例的 `host` 重新写 `LOADER` 与
+`TRUSTEDPATHS` → 重写 `state.json` → 打印 `回滚完成：现在跑的是 X`。
+
+- 备份目录既认 `CadMath03.bundle`（ApplicationPlugins 全局模式），也认按版本注册留下的 `<版本>` 目录。
+- 备份本身不删除，回滚之后仍可再回滚到更早的一份；交互模式下会列出所有候选让你挑。
+- 升级时 `payload` 里的旧版本会自动清掉（0.5.0 起），所以想留退路就得有 `backups`——这也是它永不自动清理的原因。
 
 > **0.4.5 及更早的更新流程是坏的**：清单里没有 `zip` 段，而 StrictMode 下访问 `$Setup.zip` 会抛
 > "找不到属性 zip"，下载完就失败。0.4.6 起改为用 `Get-SetupField` 读可选字段，构建时也重新写入
@@ -178,7 +188,7 @@ CadMath-Setup.ps1 -Install <实例> -FromZip D:\pkg\CadMath-InlineMath-0.4.1.zip
 CadMath-Setup.ps1 -Install <实例> -FromBundle D:\pkg\CadMath03.bundle -Yes
 ```
 
-其他开关：`-Mode registration|appplugins`（默认 `registration`）、`-StateRoot`（换状态目录，测试用）、`-RemoveLegacyBundle`（自动把旧式 ApplicationPlugins 安装移到备份）、`-SetupJson`、`-NoNetwork`、`-Quiet`、`-RegistryRoot` / `-MachineRegistryRoot` / `-AppsRoot`（测试用的假根）。
+其他开关：`-Rollback`（从备份恢复上一个版本）、`-Mode registration|appplugins`（默认 `registration`）、`-StateRoot`（换状态目录，测试用）、`-RemoveLegacyBundle`（自动把旧式 ApplicationPlugins 安装移到备份）、`-SetupJson`、`-NoNetwork`、`-Quiet`、`-RegistryRoot` / `-MachineRegistryRoot` / `-AppsRoot`（测试用的假根）。
 
 交互模式下还有一段「选择目标实例」，支持 `1,3` 多选、`a` 全选、回车全部。
 
@@ -224,7 +234,7 @@ CadMath-Setup.ps1 -Install <实例> -FromBundle D:\pkg\CadMath03.bundle -Yes
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\tests\Test-Setup.ps1
-# 通过 39 项，失败 0 项
+# 通过 40 项，失败 0 项
 ```
 
 测试用临时 `-StateRoot` 与假注册表根（`HKCU:\Software\CadMathSetupTest\<guid>`），不会动真实安装；覆盖清单校验、适配器匹配的每个拒绝原因、zip 越界、安装/修复/卸载、`TRUSTEDPATHS` 合并与还原、事务回滚、崩溃后恢复、版本比较、两种安装方式（按版本注册与 ApplicationPlugins 全局）、CAD 运行时拒绝安装，以及启动批处理的行尾检查。
