@@ -21,5 +21,7 @@ internal sealed class AdapterHost : IAdapterHost
 
     public void Report(LogLevel level, string message) => _log.Write(level, message);
 
+    public IUserFeedback Feedback => _manager.Feedback;
+
     public void OnFailure(Exception exception) => _manager.HandleAdapterFailure(exception);
 }

@@ -20,6 +20,7 @@ internal static class Program
         HostSeriesCases();
         ManifestCases();
         SelectionCases();
+        EchoCases();
 
         foreach (var failure in Failures)
         {
@@ -286,6 +287,21 @@ internal static class Program
     };
 
     // ---------------------------------------------------------------- 工具
+
+    /// <summary>0.5.0：回显文本只影响观感，规则要固定下来（坐标加空格、角度原样）。</summary>
+    private static void EchoCases()
+    {
+        void Echo(string? value, string expected) =>
+            Check(Conversion.FormatForEcho(value) == expected, $"FormatForEcho(\"{value}\")：期望 \"{expected}\"，实际 \"{Conversion.FormatForEcho(value)}\"");
+
+        Echo("70", "70");
+        Echo("@70,0", "@70, 0");
+        Echo("#20,5,0", "#20, 5, 0");
+        Echo("70<45", "70<45");
+        Echo("666.666666666667", "666.666666666667");
+        Echo("", "");
+        Echo(null, "");
+    }
 
     private static PromptKind Kind(bool point, bool integer) =>
         integer ? PromptKind.Integer : point ? PromptKind.Point : PromptKind.Other;

@@ -38,6 +38,7 @@ internal sealed class AdapterManager : IDisposable
     public AdapterManager(ILogSink log)
     {
         _log = log;
+        Feedback = new SwitchableFeedback(log, new CommandLineFeedback(log));
         _host = new AdapterHost(this, log);
         _shellDirectory = Path.GetDirectoryName(typeof(AdapterManager).Assembly.Location) is { Length: > 0 } dir
             ? dir
@@ -49,6 +50,9 @@ internal sealed class AdapterManager : IDisposable
     public bool Enabled { get; private set; } = true;
 
     public HostSeries Host { get; }
+
+    /// <summary>给适配器的用户回显通道（0.5.0 起：输出 "= 结果"）。</summary>
+    public SwitchableFeedback Feedback { get; }
 
     public AdapterManifest? Active { get; private set; }
 
@@ -130,7 +134,7 @@ internal sealed class AdapterManager : IDisposable
 
     public string Describe()
     {
-        var text = $"{ProductInfo.Name} {ProductInfo.Version} 开启={Enabled} 适配器={Active?.Id ?? "-"} 宿主={Host} 替换请求={Replacements} 最后错误={(string.IsNullOrEmpty(LastError) ? "-" : LastError)}";
+        var text = $"{ProductInfo.Name} {ProductInfo.Version} 开启={Enabled} 适配器={Active?.Id ?? "-"} 宿主={Host} 替换请求={Replacements} 回显={(Feedback.Enabled ? "开" : "关")} 最后错误={(string.IsNullOrEmpty(LastError) ? "-" : LastError)}";
         if (_rejected.Count > 0) text += DescribeRejections();
         return text + "\n日志：" + LogFile.Path;
     }

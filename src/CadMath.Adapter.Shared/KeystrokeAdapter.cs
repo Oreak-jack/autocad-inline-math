@@ -216,6 +216,7 @@ public abstract class KeystrokeAdapter : ICadAdapter
                 // 仍标记"这一笔已处理"，避免紧随其后的 WM_CHAR 重复记一遍日志。
                 NoteKeystrokeConsumed(message.message, key);
                 _host.Report(LogLevel.Warn, "rejected: " + conversion.Code + " " + conversion.Message + " input=" + before);
+                TryFeedback(() => _host.Feedback.OnRejected(before, conversion.Code ?? string.Empty, conversion.Message ?? string.Empty));
                 System.Media.SystemSounds.Beep.Play();
                 return;
             }
@@ -230,6 +231,7 @@ public abstract class KeystrokeAdapter : ICadAdapter
                 _host.Report(LogLevel.Info,
                     "replacement_requested " + before + " => " + conversion.Value + " command=" + _contextCommand +
                     " msg=0x" + message.message.ToString("X"));
+                TryFeedback(() => _host.Feedback.OnReplaced(before, conversion.Value));
             }
             finally
             {
@@ -247,9 +249,31 @@ public abstract class KeystrokeAdapter : ICadAdapter
         }
     }
 
-    /// <summary>绝不要往属性面板/对话框的 TextBox 里写，即使当时正在画图。</summary>
-    private static bool AllowedFocus(Document document)
+    /// <summary>
+    /// 回显是"锦上添花"：宿主没实现、或者实现里抛了（例如编辑器刚好不可用），都绝不能影响
+    /// 已经完成的输入改写，所以这里把异常吞掉并只记一条日志。
+    /// </summary>
+    private void TryFeedback(Action action)
     {
+        try
+        {
+            action();
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                _host.Report(LogLevel.Warn, "feedback failed: " + ex.GetType().Name + ": " + ex.Message);
+            }
+            catch
+            {
+                // 连日志都失败时彻底放弃，热点路径不抛出。
+            }
+        }
+    }
+
+    /// <summary>绝不要往属性面板/对话框的 TextBox 里写，即使当时正在画图。</summary>
+    private static bool AllowedFocus(Document document)    {
         var focused = Keyboard.FocusedElement;
         if (focused?.GetType().FullName == "Autodesk.AutoCAD.ViewModel.CommandLine.CommandLineTextBox") return true;
         if (focused is System.Windows.Controls.TextBox) return false;

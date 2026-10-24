@@ -21,6 +21,12 @@ public interface IAdapterHost
     /// <summary>记录一条事实。</summary>
     void Report(LogLevel level, string message);
 
+    /// <summary>
+    /// 给用户的即时回显（可选）。宿主永远给一个非 <c>null</c> 的实现，
+    /// 至于要不要真的显示，由宿主按配置决定。
+    /// </summary>
+    IUserFeedback Feedback { get; }
+
     /// <summary>适配器自身出错（通常意味着 API 契约变了）。宿主负责保护性关闭并记日志。</summary>
     void OnFailure(Exception exception);
 }

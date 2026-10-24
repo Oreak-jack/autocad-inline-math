@@ -14,6 +14,40 @@ public static class ShellCommands
     [CommandMethod("CM3OFF")]
     public static void Disable() => ShellApplication.Manager?.Disable();
 
+    /// <summary>
+    /// 0.5.0：改写后的即时回显开关。关键字 ON / OFF，直接回车＝切换。
+    /// 关闭后只写日志、不往命令行插字。
+    /// </summary>
+    [CommandMethod("CM3ECHO")]
+    public static void Echo()
+    {
+        var manager = ShellApplication.Manager;
+        var document = AcApp.DocumentManager.MdiActiveDocument;
+        if (manager is null || document is null) return;
+
+        var feedback = manager.Feedback;
+        var options = new PromptKeywordOptions(
+            "\n回显 = 结果（当前：" + (feedback.Enabled ? "开" : "关") + "）[ON/OFF]",
+            "ON OFF");
+        options.AllowNone = true;
+
+        var result = document.Editor.GetKeywords(options);
+        switch (result.StringResult)
+        {
+            case "ON":
+                feedback.Enabled = true;
+                break;
+            case "OFF":
+                feedback.Enabled = false;
+                break;
+            default:
+                feedback.Enabled = !feedback.Enabled;
+                break;
+        }
+
+        document.Editor.WriteMessage("\n回显：" + (feedback.Enabled ? "开" : "关") + "\n");
+    }
+
     [CommandMethod("CM3STATUS")]
     public static void Status()
     {
