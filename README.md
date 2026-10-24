@@ -1,11 +1,11 @@
-# AutoCAD Inline Math
+﻿# AutoCAD Inline Math
 
 [![tests](https://github.com/Oreak-jack/autocad-inline-math/actions/workflows/tests.yml/badge.svg)](https://github.com/Oreak-jack/autocad-inline-math/actions/workflows/tests.yml)
 
 在 AutoCAD 命令行里直接写算式：`100-30` 回车就是 `70`，`@100-30,0` 就是相对坐标 `@70,0`。
 支持长度、角度、坐标等所有"提示输入"的场景，不需要记命令、不需要开计算器、不跳出 CAD。
 
-当前版本 **0.5.1**，支持 AutoCAD 2015 ~ 2026（R20.0 ~ R25.1，共七个版本带；2024 / 2026 已真机验证）。AutoCAD 2020（R23.1）仍是**实验性支持**（已编译、安装流程已验证，待真机确认）。用命令行安装器 `CadMath-Setup.cmd` 安装、更新、卸载，见 [docs/INSTALLER.md](docs/INSTALLER.md)。
+当前版本 **0.5.2**，支持 AutoCAD 2015 ~ 2026（R20.0 ~ R25.1，共七个版本带；2024 / 2026 已真机验证）。AutoCAD 2020（R23.1）仍是**实验性支持**（已编译、安装流程已验证，待真机确认）。用命令行安装器 `CadMath-Setup.cmd` 安装、更新、卸载，见 [docs/INSTALLER.md](docs/INSTALLER.md)。
 
 ---
 
@@ -14,9 +14,9 @@
 0.3.3 是一个 155 行的 `Plugin.cs` 同时兼任程序集入口、命令、键盘拦截、状态机、日志和焦点探测，外加手工打包脚本和一个 470 行、只认全局 `ApplicationPlugins` 的 PowerShell 安装器。能用，但改一处要读全部。
 
 0.4.x 把同样的功能按职责拆开。0.4.0 只做拆分、拿掉安装器；0.4.1 把安装器以**命令行工具 + 按版本注册**的形式接回来；0.4.2 让一套发行包同时容纳两代 CLR 宿主（.NET 8 给 2025/2026，.NET Framework 4.8 给 2024）；0.4.3 把 2024 适配器从 `planned` 提升为 `host-tested`，正式包随之开放 2024；0.4.4 又加了一代 4.8 宿主（编译基准 23.1）给 2020，先以实验状态发布；0.5.1 把命令统一改成 `CLM` 前缀（`CM3xxx` 不再注册），新增 `CLMECHO`（改写回显）与 `CLMSTYLE`（提示风格），拦截改用 `CMDNAMES` 不再依赖 16 命令白名单。
-0.4.5 修掉了方向输入（`<-30`、`@<45`）被误判成坏表达式、以及拒绝时连回车一起吞掉的问题；0.4.6 修掉了"检查更新"在 0.4.5 上必然失败的 `zip` 属性错误（旧清单格式兼容问题）；0.4.7 让菜单 2 把每一步都打出来（连接、版本、下载进度、解压校验、替换注册），不再有一段看起来像卡死的静默期；0.4.8 让安装器的横幅与日志版本号取自同包的 `setup.json`，不再显示编译期常量（0.4.7 的包里还印着 v0.4.5）；0.4.9 修掉了从浏览器下载、解压后安装时 dll 带"来自网络"标记、导致 AutoCAD 2024 拒绝加载（0x80131515）的问题——安装器改为在复制进负载时抹掉该标记；0.4.10 把 2025 从 2026 的宿主里拆出来（`modern-r25` 改用 2025 的 SDK 编译），并把 2021–2024 的编译基准从 24.3 换成 24.0；0.4.11 顺着同一条规则补齐 2018（`legacy-r22`）、2017（`legacy-r21`）、2015–2016（`legacy-r20`）三个 band，覆盖范围下探到 2015；0.5.1 给插件本身加能力：计算结果回显（`= 70`，`CLMECHO` 开关）、动态输入框也拦、升级后自动清理旧负载、`-Rollback` 一键退回上一个版本、适配器连败 3 次才保护性关闭、命令态改用 `CMDNAMES` 不再受 16 命令白名单限制、`CLMSTYLE` 提示风格开关——按 [docs/VERSION-MATRIX.md](docs/VERSION-MATRIX.md) 的"编译锚取 band 内最旧"规则，这样每个 band 只编一份、只需测最新一个版本：
+0.4.5 修掉了方向输入（`<-30`、`@<45`）被误判成坏表达式、以及拒绝时连回车一起吞掉的问题；0.4.6 修掉了"检查更新"在 0.4.5 上必然失败的 `zip` 属性错误（旧清单格式兼容问题）；0.4.7 让菜单 2 把每一步都打出来（连接、版本、下载进度、解压校验、替换注册），不再有一段看起来像卡死的静默期；0.4.8 让安装器的横幅与日志版本号取自同包的 `setup.json`，不再显示编译期常量（0.4.7 的包里还印着 v0.4.5）；0.4.9 修掉了从浏览器下载、解压后安装时 dll 带"来自网络"标记、导致 AutoCAD 2024 拒绝加载（0x80131515）的问题——安装器改为在复制进负载时抹掉该标记；0.4.10 把 2025 从 2026 的宿主里拆出来（`modern-r25` 改用 2025 的 SDK 编译），并把 2021–2024 的编译基准从 24.3 换成 24.0；0.4.11 顺着同一条规则补齐 2018（`legacy-r22`）、2017（`legacy-r21`）、2015–2016（`legacy-r20`）三个 band，覆盖范围下探到 2015；0.5.1 给插件本身加能力：计算结果回显（`= 70`，`CLMECHO` 开关）、升级后自动清理旧负载、`-Rollback` 一键退回上一个版本、适配器连败 3 次才保护性关闭、命令态改用 `CMDNAMES` 不再受 16 命令白名单限制、`CLMSTYLE` 提示风格开关；0.5.2 移除了 0.5.0 里那个"动态输入框也拦"的分支——实测 2026 的 acmgd 里没有对应类型、窗口层也拿不到输入框，那条路径永远不可能生效，留着只会吞键并误导日志——按 [docs/VERSION-MATRIX.md](docs/VERSION-MATRIX.md) 的"编译锚取 band 内最旧"规则，这样每个 band 只编一份、只需测最新一个版本：
 
-| | 0.3.3 | 0.5.1 |
+| | 0.3.3 | 0.5.2 |
 | --- | --- | --- |
 | 计算与判定 | `Expression.cs` + `InputPolicy.cs` 被测试工程直接编译 | 独立的 `CadMath.Core` / `CadMath.Abstractions` 程序集 |
 | 键盘拦截 | `Plugin.cs` 里所有东西混在一起 | 7 个薄适配器工程（2026/2025 走 .NET 8，2021–2024、2020、2018、2017、2015–2016 走 .NET Framework 4.8），全部共用同一份 `KeystrokeAdapter` |
@@ -33,7 +33,7 @@
 
 ```
 CadMath.sln
-Directory.Build.props          版本号的唯一来源（0.5.1）
+Directory.Build.props          版本号的唯一来源（0.5.2）
 adapters/adapters.json         适配器清单（随包分发，运行时选择用）
 bundle/PackageContents.xml     包描述模板，打包时注入版本
 build/build.ps1                一条命令产出 bundle + zip + setup.json + SHA256SUMS.txt
@@ -112,13 +112,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\CadMath-Setup.ps
 做不了：`CadMath.Core` 与 `CadMath.Abstractions` 是 `netstandard2.0`，运行下限是 **.NET Framework 4.6.1**。
 
 2021–2024 的适配器（`legacy-r24`）状态是 `host-tested`，正式包直接支持：在 2024 里装出来的
-`LOADER` 指向 `...\payload\0.5.1\Contents\Win64-2024\CadMath03.dll`。它刻意用 **2021 的 SDK**（`24.0.0`）
+`LOADER` 指向 `...\payload\0.5.2\Contents\Win64-2024\CadMath03.dll`。它刻意用 **2021 的 SDK**（`24.0.0`）
 编译——只依赖 2021 就有的 API，2022/2023/2024 运行时由 AutoCAD 解析成它自己更新的那一份。
 
 2020 的适配器（`legacy-r23`）在 0.5.1 里状态仍是 `planned`（**实验性**，只做了编译与安装流程验证，
 还没有人在真实 AutoCAD 2020 上跑过）。给 2020 机器测试请用实验包 `build\build.ps1 -Experimental`
-产出的 `CadMath-InlineMath-0.5.1-experimental.zip`：它把这个适配器临时提升为 `built`，装出来的
-`LOADER` 指向 `...\payload\0.5.1\Contents\Win64-2020\CadMath03.dll`。验证通过后把
+产出的 `CadMath-InlineMath-0.5.2-experimental.zip`：它把这个适配器临时提升为 `built`，装出来的
+`LOADER` 指向 `...\payload\0.5.2\Contents\Win64-2020\CadMath03.dll`。验证通过后把
 `adapters/adapters.json` 里 `legacy-r23` 的 `status` 改成 `host-tested` 再发正式版。
 
 想确认当前这台机器上装的是哪一代，在对应版本的 AutoCAD 命令行里跑：
@@ -185,9 +185,9 @@ CadMath 0.5.1 底部命令栏计算已启用。关闭：CLMOFF；状态：CLMSTA
 
 **限制**：表达式 ≤ 512 字符、括号/符号嵌套 ≤ 32 层、结果绝对值在 `1e-12 ~ 1e15` 之间或为 0；除零、缺右括号、整数提示下非整数结果都会拦下并提示，不会产生错误几何。
 
-**生效范围**：只对**底部命令行**的提示输入生效（浮动面板、对话框不拦截），且只在下列 15 个命令的提示中出现：
+**生效范围**：只对**底部命令行**的提示输入生效。动态输入（十字光标旁的输入框）不拦截——它是 AutoCAD 自绘的原生控件，托管 API 里没有任何读写入口（0.5.0 曾尝试反射 `DynamicInput` 类型，实测 2026 的 `acmgd` 里并不存在该类型，窗口层只有始终存在的隐藏 `CAcDynInputWndControl`，故 0.5.2 起移除该分支并通过 `DYNMODE`/`CLMSTATUS` 明确告知）。
 
-`LINE PLINE CIRCLE ARC RECTANG OFFSET MOVE COPY ROTATE SCALE STRETCH FILLET CHAMFER POLYGON ELLIPSE LENGTHEN`
+命令态取自 AutoCAD 的 `CMDNAMES` 系统变量，所以**任何需要距离/角度/坐标/整数的命令**都能用（0.4.x 的 16 命令白名单已不再是限制，只在读不到 `CMDNAMES` 时作为兜底）。
 
 ---
 
@@ -249,13 +249,13 @@ dist/CadMath03-2024.bundle/           2021 ~ 2024 专用包（同上，Series R2
 dist/CadMath03-2020.bundle/           2020 专用包（同上，Series R23.1）
 dist/setup.json                       发行清单：版本、hosts（系列→入口 DLL）、逐文件 SHA-256、适配器状态
 dist/tools/setup/                     安装器（随 zip 分发）
-dist/CadMath-InlineMath-0.5.1.zip    正式包（-NoZip 可跳过）：七个 bundle + 安装器 + setup.json
-dist/experimental/CadMath-InlineMath-0.5.1-experimental.zip
+dist/CadMath-InlineMath-0.5.2.zip    正式包（-NoZip 可跳过）：七个 bundle + 安装器 + setup.json
+dist/experimental/CadMath-InlineMath-0.5.2-experimental.zip
                                       实验包：把 planned 适配器临时提为 built（给 2020 等未验证版本试用）
 dist/SHA256SUMS.txt                   zip 的 SHA-256（便于人工核对）
 ```
 
-版本号只写在 `Directory.Build.props`（`<Version>0.5.1</Version>`），程序和 `PackageContents.xml` 都从那里取；zip 名与 `setup.json` 里的版本也来自同一处。
+版本号只写在 `Directory.Build.props`（`<Version>0.5.2</Version>`），程序和 `PackageContents.xml` 都从那里取；zip 名与 `setup.json` 里的版本也来自同一处。
 
 两个本机会踩的坑，脚本事先规避了：
 
@@ -331,7 +331,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\tests\Test-Setup
 ## 日志与诊断
 
 - 路径：`%TEMP%\CadMath03.log`（超过 1 MB 停止写入）。
-- 关键行：`shell 0.5.1 start; host=R25.1`、`adapter modern-r26 active`、`replacement_requested 100-30 => 70 command=LINE msg=0x100`、`adapter failure #1`（连败 3 次才 `interception disabled`）。
+- 关键行：`shell 0.5.2 start; host=R25.1`、`adapter modern-r26 active`、`replacement_requested 100-30 => 70 command=LINE msg=0x100`、`adapter failure #1`（连败 3 次才 `interception disabled`）。
 - `CLMSTATUS` 会输出开关状态、活动适配器、替换次数、最后一次错误、日志路径，以及被排除的适配器及原因。
 - 想在没有 CAD 的环境里验证探测逻辑，可设 `CADMATH_HOST_SERIES=R25.1`。
 - 在 2024 上排查问题先跑 `CLMPROBE`，它会打印宿主 release、acmgd 版本、适配器、绑定解析结果与焦点类型。
@@ -340,7 +340,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\tests\Test-Setup
 
 ## 已知限制
 
-- 只支持底部命令行输入，不支持浮动命令行面板与对话框。
+- 只支持底部命令行输入；浮动命令行面板、对话框与**动态输入**不拦截（动态输入没有可用的托管入口，2026 上实测无 `DynamicInput` 类型）。
 - 适配器抛异常时会**保护性关闭**拦截（fail closed），需手动 `CLMON`；这样绝不会把错误输入塞进图形。
 - 2024 / 2026 已真机验证；2025 用 2025 的 SDK（`25.0.1`）单独编译且尚未实测；2021–2023 与 2024 共用 `24.0.0` 编的宿主，2018 / 2017 / 2015–2016 各一份（`22.0.0` / `21.0.2` / `20.1.0`），都只做了编译、核对锚与安装流程验证，没有逐一实跑；2020 仍是实验性支持（待真机确认）。
 - 安装器只认 `%LOCALAPPDATA%` 下自己的负载与 `HKCU` 注册；手工放进 `ApplicationPlugins` 的旧式安装会被识别为"旧式"，需要迁移一次才能按版本独立管理。

@@ -1,4 +1,4 @@
-﻿using System.IO;
+using System.IO;
 using System.Reflection;
 #if NET
 using System.Runtime.Loader;
@@ -176,6 +176,7 @@ internal sealed class AdapterManager : IDisposable
     {
         var text = $"{ProductInfo.Name} {ProductInfo.Version} 开启={Enabled} 适配器={Active?.Id ?? "-"} 宿主={Host} 替换请求={Replacements} 回显={(Feedback.Enabled ? "开" : "关")} 连败={Failures} 风格={DescribeStyle(Style)} 最后错误={(string.IsNullOrEmpty(LastError) ? "-" : LastError)}";
         if (_rejected.Count > 0) text += DescribeRejections();
+        text += "\n生效范围：仅底部命令行（动态输入无托管入口，不支持）";
         return text + "\n日志：" + LogFile.Path;
     }
 

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Threading;
@@ -257,14 +257,8 @@ public abstract class KeystrokeAdapter : ICadAdapter
             return;
         }
 
-        var window = AcApp.MainWindow;
-
-        // 动态输入（十字光标旁的输入框）先试：此时底部命令行的输入框可能根本不存在。
-        if (TryDynamicInput(e, message.message, key, window, out var dynamicHandled) && dynamicHandled)
-        {
-            return;
-        }
-
+        // 0.5.2：动态输入（十字光标旁的输入框）没有可用的托管入口，已移除拦截分支，
+        // 只剩底部命令行这一条通路。详见 DynamicInputSupported。
         var document = AcApp.DocumentManager.MdiActiveDocument;
         if (document is null || _contextDocument != document ||
             CommandOf(document) != _contextCommand ||
@@ -299,76 +293,17 @@ public abstract class KeystrokeAdapter : ICadAdapter
     }
 
     /// <summary>
-    /// 0.5.0：动态输入拦截。返回 false 表示"焦点不在动态输入框上"，调用方继续走底部命令行分支。
-    /// 用反射取 API：这些类型在早年版本里未必存在，取不到就当不存在。
+    /// 动态输入拦截：<b>已停用</b>。
+    /// 0.5.0 曾尝试反射 <c>Autodesk.AutoCAD.EditorInput.DynamicInput</c> 并读窗口文本，
+    /// 但在 AutoCAD 2026 上实测：acmgd 里根本没有这个类型，窗口层只有 6 个始终存在的
+    /// 隐藏 <c>CAcDynInputWndControl</c>（内部 Edit 子窗口 visible=False），焦点始终落在
+    /// 文档视图的原生窗口上。动态输入是自绘控件，托管侧没有读写入口，所以这条路径
+    /// 永远不可能生效，留着只会吞键、误导日志。0.5.2 起彻底移除。
+    /// 参见 <see cref="DynamicInputSupported"/>。
     /// </summary>
-    private bool TryDynamicInput(PreTranslateMessageEventArgs e, int messageId, long key, Window window, out bool handled)
-    {
-        handled = false;
-        var box = FindDynamicInputBox(window);
+    internal const bool DynamicInputSupported = false;
 
-        if (box is null)
-        {
-            // 兜底：焦点是不是落在动态输入框上（DYN 开启时才会出现）。
-            if (!IsDynamicInputWindowFocused()) return false;
-            if (messageId != 0x100) return true;
-
-            var text = ReadDynamicInputText();
-            if (string.IsNullOrEmpty(text)) return true;
-
-            var conversion = EvaluateDynamicInput(text);
-            if (conversion.Decision == Decision.Pass) return true;
-
-            handled = true;
-            NoteKeystrokeConsumed(messageId, key);
-            if (conversion.Decision == Decision.Reject)
-            {
-                _host.Report(LogLevel.Warn, "dyninput rejected: " + conversion.Code + " input=" + text);
-                TryFeedback(() => _host.Feedback.OnRejected(text, conversion.Code ?? string.Empty, conversion.Message ?? string.Empty));
-            }
-            else
-            {
-                _host.Report(LogLevel.Warn,
-                    "dyninput replacement pending: " + text + " => " + conversion.Value +
-                    "（动态输入没有公开的写回通道，已跳过）");
-                TryFeedback(() => _host.Feedback.OnReplaced(text, conversion.Value));
-            }
-
-            return true;
-        }
-
-        var before = ReadBoxText(box);
-        if (before is null) return false;
-
-        var result = EvaluateDynamicInput(before);
-        if (result.Decision == Decision.Pass) return true;
-
-        handled = true;
-        NoteKeystrokeConsumed(messageId, key);
-        if (result.Decision == Decision.Reject)
-        {
-            _host.Report(LogLevel.Warn, "dyninput rejected: " + result.Code + " input=" + before);
-            TryFeedback(() => _host.Feedback.OnRejected(before, result.Code ?? string.Empty, result.Message ?? string.Empty));
-            return true;
-        }
-
-        if (WriteBoxText(box, result.Value))
-        {
-            _host.Report(LogLevel.Info, "dyninput replacement " + before + " => " + result.Value + " command=" + _contextCommand);
-            TryFeedback(() => _host.Feedback.OnReplaced(before, result.Value));
-        }
-        else
-        {
-            _host.Report(LogLevel.Warn, "dyninput replacement failed: " + before + " => " + result.Value);
-        }
-
-        return true;
-    }
-
-    private Conversion EvaluateDynamicInput(string text) =>
-        _host.Evaluate(new SubmitRequest(_contextKind, _contextCommand, text));
-
-    /// <summary>把一次改写/拒绝落到当前输入缓冲上（底部命令行与动态输入共用）。</summary>
+    /// <summary>把一次改写/拒绝落到当前输入缓冲上。</summary>
     private void ApplyConversion(int messageId, long key, PromptKind kind, object buffer)
     {
         // 输入缓冲的类型是 AutoCAD 未文档化的内部类型，用反射调用它的成员。
@@ -478,15 +413,6 @@ public abstract class KeystrokeAdapter : ICadAdapter
     /// </summary>
     private static bool IsCommandLineWindowFocused(Document document) => AllowedFocusByWindow(document);
 
-    /// <summary>0.5.0：焦点是否在动态输入框（DYN 打开时才有）。</summary>
-    private static bool IsDynamicInputWindowFocused()
-    {
-        var focus = GetFocus();
-        if (focus == IntPtr.Zero) return false;
-        var className = GetClassName(focus);
-        return className is "acdyninput" or "dyninput";
-    }
-
     /// <summary>
     /// 老版本（2015–2020）上 WPF 焦点类型可能拿不到，退回窗口类/子窗口判定。
     /// 类名白名单与 CADAutoIME 的 `_englishOnlyClasses` 同源：命令行、自动完成弹窗、动态输入框、工具提示。
@@ -514,12 +440,6 @@ public abstract class KeystrokeAdapter : ICadAdapter
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder name, int maxCount);
 
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern int GetWindowTextLength(IntPtr hWnd);
-
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
-    private static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder text, int maxCount);
-
     private static string? GetClassName(IntPtr handle)
     {
         var buffer = new System.Text.StringBuilder(256);
@@ -527,65 +447,6 @@ public abstract class KeystrokeAdapter : ICadAdapter
         if (length <= 0) return null;
         var text = buffer.ToString(0, length);
         return text.Length == 0 ? null : text;
-    }
-
-    /// <summary>
-    /// 试取动态输入框。API 在早年版本里未必存在，全程反射，取不到返回 null。
-    /// </summary>
-    private static object? FindDynamicInputBox(Window window)
-    {
-        try
-        {
-            // CAD 2021+ 有 Editor.InputStatus/DynamicInput，早年没有，直接放弃。
-            var type = Type.GetType("Autodesk.AutoCAD.EditorInput.DynamicInput, acmgd", throwOnError: false);
-            if (type is null) return null;
-
-            var method = type.GetMethod("GetCurrentInputBox", BindingFlags.Public | BindingFlags.Static);
-            return method?.Invoke(null, null);
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static string? ReadBoxText(object box)
-    {
-        try
-        {
-            var property = box.GetType().GetProperty("Text", BindingFlags.Public | BindingFlags.Instance);
-            return property?.GetValue(box) as string;
-        }
-        catch
-        {
-            return null;
-        }
-    }
-
-    private static bool WriteBoxText(object box, string value)
-    {
-        try
-        {
-            var property = box.GetType().GetProperty("Text", BindingFlags.Public | BindingFlags.Instance);
-            if (property is null || !property.CanWrite) return false;
-            property.SetValue(box, value);
-            return true;
-        }
-        catch
-        {
-            return false;
-        }
-    }
-
-    /// <summary>动态输入框没有公开读文本的口子时，至少能从焦点窗口的标题/文本窗口读回。</summary>
-    private static string? ReadDynamicInputText()
-    {
-        var focus = GetFocus();
-        if (focus == IntPtr.Zero) return null;
-        var length = GetWindowTextLength(focus);
-        if (length <= 0) return null;
-        var builder = new System.Text.StringBuilder(length + 1);
-        return GetWindowText(focus, builder, builder.Capacity) <= 0 ? null : builder.ToString();
     }
 
     /// <summary>单个文档的提示事件订阅。</summary>
