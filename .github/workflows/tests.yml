@@ -3,7 +3,7 @@ name: tests
 # 两个作业：
 #   tests —— Linux 上跑与 AutoCAD 无关的那部分（Core 计算/判定 + Abstractions 契约/清单/选择），
 #            入口是 tests/CadMath.Tests/CadMath.Tests.csproj。
-#   hosts —— Windows 上完整构建四种宿主（2026 / 2025 / 2021-2024 / 2020），
+#   hosts —— Windows 上完整构建七种宿主（2026 / 2025 / 2021-2024 / 2020 / 2018 / 2017 / 2015-2016），
 #            再用 build/verify-anchors.ps1 反射核对每个 DLL 实际引用的 acmgd 版本，
 #            最后跑安装器测试。Autodesk 托管程序集来自官方 NuGet（AutoCAD.NET），
 #            是公开包，所以 runner 上能编译；真机加载仍然只能在装了 CAD 的机器上验证，
@@ -62,7 +62,14 @@ jobs:
         with:
           dotnet-version: '8.0.x'
 
-      # 构建四份宿主 + 四个 bundle + setup.json（NuGet 上的 AutoCAD.NET 24.0.0 / 25.0.1 / 25.1.0 / 23.1.0）
+      # 0.5.0 任务 8：先跑一遍反射冒烟——宿主在这些 SDK 上还能编、锚还是对的。
+      # 这一步不需要 CAD，只是把"编译期契约"钉在 CI 上，真机行为另算。
+      - name: Reflection smoke (build + anchors)
+        shell: powershell
+        run: ./build/verify-anchors.ps1 -Build
+
+      # 构建七份宿主 + 七个 bundle + setup.json
+      # （NuGet 上的 AutoCAD.NET 25.1.0 / 25.0.1 / 24.0.0 / 23.1.0 / 22.0.0 / 21.0.2 / 20.1.0）
       - name: Build hosts
         shell: powershell
         run: ./build/build.ps1

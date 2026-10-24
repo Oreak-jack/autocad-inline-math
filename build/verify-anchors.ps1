@@ -14,12 +14,22 @@
 #>
 [CmdletBinding()]
 param(
-    [string]$SetupJson
+    [string]$SetupJson,
+    # 0.5.0 任务 8：CI 里先用 -Build 跑一遍——没有 dist 时先构建，再看锚对不对。
+    [switch]$Build,
+    [string]$AcadDir
 )
 
 $ErrorActionPreference = 'Stop'
 $root = Split-Path -Parent $PSScriptRoot
 if ([string]::IsNullOrWhiteSpace($SetupJson)) { $SetupJson = Join-Path $root 'dist\setup.json' }
+if ($Build -or -not (Test-Path -LiteralPath $SetupJson)) {
+    $buildScript = Join-Path $PSScriptRoot 'build.ps1'
+    $buildArgs = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $buildScript)
+    if ($AcadDir) { $buildArgs += @('-AcadDir', $AcadDir) }
+    & (Join-Path $env:SystemRoot 'System32\WindowsPowerShell\v1.0\powershell.exe') @buildArgs
+    if ($LASTEXITCODE -ne 0) { throw "构建失败（退出码 $LASTEXITCODE），无法核对编译锚。" }
+}
 if (-not (Test-Path -LiteralPath $SetupJson)) { throw "找不到发行清单：$SetupJson（先跑 build\build.ps1）" }
 
 $packageRoot = Split-Path -Parent $SetupJson
