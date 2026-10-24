@@ -165,4 +165,85 @@ public static class ShellCommands
 
         editor.WriteMessage("\n");
     }
+
+    /// <summary>
+    /// 焦点取证：在命令行里敲它，立刻把"插件眼里的焦点长什么样"写进日志。
+    /// 拦截失效时先用它定性是焦点判定没中、还是输入缓冲取不到。
+    /// </summary>
+    [CommandMethod("CM3FOCUS")]
+    public static void Focus()
+    {
+        var document = AcApp.DocumentManager.MdiActiveDocument;
+        var editor = document?.Editor;
+        if (editor is null) return;
+
+        var lines = new List<string>();
+
+        try
+        {
+            var focused = System.Windows.Input.Keyboard.FocusedElement;
+            lines.Add("wpfFocused=" + (focused?.GetType().FullName ?? "(null)"));
+            lines.Add("wpfIsTextBox=" + (focused is System.Windows.Controls.TextBox).ToString().ToLowerInvariant());
+        }
+        catch (System.Exception ex)
+        {
+            lines.Add("wpfFocused=<" + ex.GetType().Name + ">");
+        }
+
+        try
+        {
+            var native = GetFocus();
+            var className = "(0)";
+            if (native != IntPtr.Zero)
+            {
+                var buffer = new System.Text.StringBuilder(256);
+                var length = GetClassName(native, buffer, buffer.Capacity);
+                className = length > 0 ? buffer.ToString(0, length) : "(empty)";
+            }
+
+            var documentWindow = document.Window.Handle;
+            lines.Add("nativeClass=" + className);
+            lines.Add("nativeIsDocument=" + (native == documentWindow).ToString().ToLowerInvariant());
+            lines.Add("nativeIsChildOfDocument=" + (native != IntPtr.Zero && IsChild(documentWindow, native)).ToString().ToLowerInvariant());
+        }
+        catch (System.Exception ex)
+        {
+            lines.Add("native=<" + ex.GetType().Name + ">");
+        }
+
+        try
+        {
+            var buffer = AcApp.UIBindings.CommandEditorManager.ActiveEditor?.PromptAndInput?.InputBuffer;
+            lines.Add("inputBuffer=" + (buffer is null ? "(null)" : "ok"));
+            if (buffer is not null)
+            {
+                lines.Add("inputText=[" + buffer.Text + "]");
+                lines.Add("promptingForCommandName=" + buffer.IsPromptingForCommandName().ToString().ToLowerInvariant());
+            }
+        }
+        catch (System.Exception ex)
+        {
+            lines.Add("inputBuffer=<" + ex.GetType().Name + ": " + ex.Message + ">");
+        }
+
+        lines.Add("activeCommand=" + (AcApp.GetSystemVariable("CMDNAMES")?.ToString() ?? "(null)"));
+
+        foreach (var line in lines)
+        {
+            editor.WriteMessage("\n" + line);
+            LogFile.Write(Abstractions.LogLevel.Info, "focus " + line);
+        }
+
+        editor.WriteMessage("\n");
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    private static extern IntPtr GetFocus();
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")]
+    [return: System.Runtime.InteropServices.MarshalAs(System.Runtime.InteropServices.UnmanagedType.Bool)]
+    private static extern bool IsChild(IntPtr parent, IntPtr child);
+
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder name, int maxCount);
 }

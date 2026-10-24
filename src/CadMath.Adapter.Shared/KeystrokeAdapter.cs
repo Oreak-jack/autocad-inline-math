@@ -124,6 +124,33 @@ public abstract class KeystrokeAdapter : ICadAdapter
         if (!_hooks.ContainsKey(document)) _hooks[document] = new PromptHooks(document, this);
     }
 
+    /// <summary>
+    /// 自愈：如果当前文档没挂上提示钩子（插件加载时还没有文档、或文档是崩溃恢复后才出来的），
+    /// 当场补挂。0.5.2 排查时就是踩在这里——CAD 恢复上次崩溃的图纸后插件静默失效，
+    /// 日志里连一条 rejected 都没有。
+    /// </summary>
+    private void AttachIfNeeded(Document document)
+    {
+        if (_hooks.ContainsKey(document)) return;
+
+        try
+        {
+            Attach(document);
+            Diag("hook-attached");
+        }
+        catch (Exception ex)
+        {
+            try
+            {
+                _host.Report(LogLevel.Warn, "hook attach failed: " + ex.GetType().Name + ": " + ex.Message);
+            }
+            catch
+            {
+                // 忽略。
+            }
+        }
+    }
+
     private void OnDocumentCreated(object sender, DocumentCollectionEventArgs e) => Attach(e.Document);
 
     private void OnDocumentDestroyed(object sender, DocumentCollectionEventArgs e)
@@ -260,20 +287,38 @@ public abstract class KeystrokeAdapter : ICadAdapter
         // 0.5.2：动态输入（十字光标旁的输入框）没有可用的托管入口，已移除拦截分支，
         // 只剩底部命令行这一条通路。详见 DynamicInputSupported。
         var document = AcApp.DocumentManager.MdiActiveDocument;
-        if (document is null || _contextDocument != document ||
-            CommandOf(document) != _contextCommand ||
-            !IsInterceptableCommand(ActiveCommands(document)))
+        if (document is null)
         {
+            Diag("no-document");
+            return;
+        }
+
+        AttachIfNeeded(document);
+
+        if (_contextDocument != document)
+        {
+            Diag("ctx-document");
+            return;
+        }
+
+        if (CommandOf(document) != _contextCommand)
+        {
+            Diag("ctx-command");
+            return;
+        }
+
+        if (!IsInterceptableCommand(ActiveCommands(document)))
+        {
+            Diag("ctx-not-interceptable");
             return;
         }
 
         if ((Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Alt)) != 0) return;
 
-        // 0.5.0：底部命令行因图层/命令导致状态变化后可能取不到 WPF 输入框；
-        // 取不到就退回"窗口类名判定 + WM_CHAR 事件回读"。判定成功说明焦点确实在命令行上。
-        if (!AllowedCommandLineFocus(document))
+        // 焦点必须落在命令行上：否则会把属性面板/对话框里的 Enter 也当成交付。
+        if (!AllowedFocus(document))
         {
-            if (!IsCommandLineWindowFocused(document)) return;
+            Diag("focus-not-commandline");
             return;
         }
 
@@ -282,8 +327,18 @@ public abstract class KeystrokeAdapter : ICadAdapter
             // 注意：AutoCAD 没有公开的“当前命令行文本 / 写回”API（Editor 上也没有 CommandLineText），
             // 这条路径只能用反射类型链读 InputBuffer（与 0.3.3 相同）。
             var buffer = AcApp.UIBindings.CommandEditorManager.ActiveEditor?.PromptAndInput?.InputBuffer;
-            if (buffer is null) return;
-            if (buffer.IsPromptingForCommandName()) return;
+            if (buffer is null)
+            {
+                Diag("input-buffer-null");
+                return;
+            }
+
+            if (buffer.IsPromptingForCommandName())
+            {
+                Diag("prompting-for-command-name");
+                return;
+            }
+
             ApplyConversion(message.message, key, _contextKind, buffer);
         }
         catch (Exception ex)
@@ -399,15 +454,67 @@ public abstract class KeystrokeAdapter : ICadAdapter
         }
     }
 
+    private int _lastDiagTick;
+
+    /// <summary>
+    /// 拦截链的"为什么没拦"取证：每 3 秒最多写一条，把当时的命令态、WPF 焦点类型、
+    /// 原生焦点窗口类名一起记下来。没有它，焦点判定一旦不中就是全静默，只能靠猜
+    /// （0.5.2 那次"什么都拦不到"就是这么耗掉的）。
+    /// </summary>
+    private void Diag(string reason)
+    {
+        try
+        {
+            // 回车是人工节奏（每秒最多几次），只做 250 ms 的去重，别把证据也吞掉。
+            var now = Environment.TickCount;
+            if (now == _lastDiagTick) return;
+            _lastDiagTick = now;
+
+            var document = AcApp.DocumentManager.MdiActiveDocument;
+            var focused = Keyboard.FocusedElement;
+            var wpfType = focused?.GetType().FullName ?? "(null)";
+
+            var native = GetFocus();
+            var nativeClass = native == IntPtr.Zero ? "(0)" : (GetClassName(native) ?? "(unknown)");
+            var documentWindow = document?.Window?.Handle ?? IntPtr.Zero;
+
+            _host.Report(LogLevel.Debug,
+                "diag " + reason +
+                " wpf=" + wpfType +
+                " nativeClass=" + nativeClass +
+                " nativeIsDocument=" + (native == documentWindow).ToString().ToLowerInvariant() +
+                " nativeIsChild=" + (native != IntPtr.Zero && IsChild(documentWindow, native)).ToString().ToLowerInvariant() +
+                " cmd=" + CommandOf(document) +
+                " ctx=" + _contextCommand);
+        }
+        catch
+        {
+            // 取证本身绝不能影响主流程。
+        }
+    }
+
     /// <summary>
     /// 绝不要往属性面板/对话框的 TextBox 里写，即使当时正在画图。
-    /// 先看 WPF 焦点是不是文本框，再交给窗口层（命令行窗口本身、它的子窗口、
-    /// 已知窗口类）判定；这里刻意不去比较 CAD 内部命名空间里的类型名。
+    /// <para>
+    /// 2025/2026 的命令行是一个独立的 WPF 窗口，原生焦点落在 <c>HwndWrapper[...]</c> 上——
+    /// 它既不是文档窗口的子窗口，也不在窗口类白名单里，所以只靠窗口层判定会一律放行
+    /// （0.5.2 里"什么都拦不到"就是这么来的）。这里先用 WPF 焦点类型做正向识别：
+    /// 类型名里带 <c>CommandLine</c> 的文本框就是命令行输入框。
+    /// 只做子串匹配、不把某个内部类型名当成稳定契约；认不出来再退回窗口层。
+    /// </para>
     /// </summary>
     private static bool AllowedFocus(Document document)
     {
         var focused = Keyboard.FocusedElement;
+        if (focused is null) return AllowedFocusByWindow(document);
+
+        var type = focused.GetType();
+        var name = type.FullName ?? type.Name;
+        if (name.IndexOf("CommandLine", StringComparison.OrdinalIgnoreCase) >= 0) return true;
+
+        // 属性面板、对话框上的普通文本框一律不碰。
         if (focused is System.Windows.Controls.TextBox) return false;
+
         return AllowedFocusByWindow(document);
     }
 
