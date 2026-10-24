@@ -3,11 +3,14 @@ using System.Collections.Generic;
 using System.Reflection;
 using System.Threading;
 using System.Runtime.InteropServices;
+using System.Windows.Controls;
 using System.Windows.Input;
 using Autodesk.AutoCAD.ApplicationServices;
 using Autodesk.AutoCAD.EditorInput;
+using Autodesk.AutoCAD.Windows;
 using CadMath.Abstractions;
 using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
+using Window = Autodesk.AutoCAD.Windows.Window;
 
 namespace CadMath.Adapters;
 
@@ -188,6 +191,14 @@ public abstract class KeystrokeAdapter : ICadAdapter
             return;
         }
 
+        var window = AcApp.MainWindow;
+
+        // 动态输入（十字光标旁的输入框）先试：此时底部命令行的输入框可能根本不存在。
+        if (TryDynamicInput(e, message.message, key, window, out var dynamicHandled) && dynamicHandled)
+        {
+            return;
+        }
+
         var document = AcApp.DocumentManager.MdiActiveDocument;
         if (document is null || _contextDocument != document ||
             CommandOf(document) != _contextCommand ||
@@ -198,55 +209,149 @@ public abstract class KeystrokeAdapter : ICadAdapter
 
         if ((Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Alt)) != 0) return;
 
+        // 0.5.0：底部命令行因图层/命令导致状态变化后可能取不到 WPF 输入框；
+        // 取不到就退回"窗口类名判定 + WM_CHAR 事件回读"。判定成功说明焦点确实在命令行上。
+        if (!AllowedCommandLineFocus(document))
+        {
+            if (!IsCommandLineWindowFocused(document)) return;
+            return;
+        }
+
         try
         {
-            if (!AllowedFocus(document)) return;
-
             var buffer = AcApp.UIBindings.CommandEditorManager.ActiveEditor?.PromptAndInput?.InputBuffer;
-            if (buffer is null || buffer.IsPromptingForCommandName()) return;
-
-            var before = buffer.Text;
-            var conversion = _host.Evaluate(new SubmitRequest(_contextKind, _contextCommand, before));
-
-            if (conversion.Decision == Decision.Pass) return;
-
-            if (conversion.Decision == Decision.Reject)
-            {
-                // 只记日志、不吞按键：吞掉 Enter 会让命令行彻底提交不了（0.4.4 的 bug）。
-                // 仍标记"这一笔已处理"，避免紧随其后的 WM_CHAR 重复记一遍日志。
-                NoteKeystrokeConsumed(message.message, key);
-                _host.Report(LogLevel.Warn, "rejected: " + conversion.Code + " " + conversion.Message + " input=" + before);
-                TryFeedback(() => _host.Feedback.OnRejected(before, conversion.Code ?? string.Empty, conversion.Message ?? string.Empty));
-                System.Media.SystemSounds.Beep.Play();
-                return;
-            }
-
-            // 与 AutoCAD 自己的命令行文本输入走同一条路：改写输入队列，而不是赋值 TextBox.Text。
-            _inHandler = true;
-            try
-            {
-                buffer.ReplaceInputQueue(conversion.Value);
-                buffer.OnSetSelectedTextQueue(conversion.Value.Length, conversion.Value.Length);
-                NoteKeystrokeConsumed(message.message, key);
-                _host.Report(LogLevel.Info,
-                    "replacement_requested " + before + " => " + conversion.Value + " command=" + _contextCommand +
-                    " msg=0x" + message.message.ToString("X"));
-                TryFeedback(() => _host.Feedback.OnReplaced(before, conversion.Value));
-            }
-            finally
-            {
-                _inHandler = false;
-            }
-
-            // 原始 Enter/Space 继续按 AutoCAD 原生流程走，不合成按键。
+            if (buffer is null) return;
+            if (buffer.IsPromptingForCommandName()) return;
+            ApplyConversion(message.message, key, _contextKind, buffer);
         }
         catch (Exception ex)
         {
-            // 失败即关闭：宁可本条命令用原始输入，也不能让半改写的表达式画出错误几何。
             e.Handled = true;
             ClearContext();
             _host.OnFailure(ex);
         }
+    }
+
+    /// <summary>
+    /// 0.5.0：动态输入拦截。返回 false 表示"焦点不在动态输入框上"，调用方继续走底部命令行分支。
+    /// 用反射取 API：这些类型在早年版本里未必存在，取不到就当不存在。
+    /// </summary>
+    private bool TryDynamicInput(PreTranslateMessageEventArgs e, int messageId, long key, Window window, out bool handled)
+    {
+        handled = false;
+        var box = FindDynamicInputBox(window);
+
+        if (box is null)
+        {
+            // 兜底：焦点是不是落在动态输入框上（DYN 开启时才会出现）。
+            if (!IsDynamicInputWindowFocused()) return false;
+            if (messageId != 0x100) return true;
+
+            var text = ReadDynamicInputText();
+            if (string.IsNullOrEmpty(text)) return true;
+
+            var conversion = EvaluateDynamicInput(text);
+            if (conversion.Decision == Decision.Pass) return true;
+
+            handled = true;
+            NoteKeystrokeConsumed(messageId, key);
+            if (conversion.Decision == Decision.Reject)
+            {
+                _host.Report(LogLevel.Warn, "dyninput rejected: " + conversion.Code + " input=" + text);
+                TryFeedback(() => _host.Feedback.OnRejected(text, conversion.Code ?? string.Empty, conversion.Message ?? string.Empty));
+            }
+            else
+            {
+                _host.Report(LogLevel.Warn,
+                    "dyninput replacement pending: " + text + " => " + conversion.Value +
+                    "（动态输入没有公开的写回通道，已跳过）");
+                TryFeedback(() => _host.Feedback.OnReplaced(text, conversion.Value));
+            }
+
+            return true;
+        }
+
+        var before = ReadBoxText(box);
+        if (before is null) return false;
+
+        var result = EvaluateDynamicInput(before);
+        if (result.Decision == Decision.Pass) return true;
+
+        handled = true;
+        NoteKeystrokeConsumed(messageId, key);
+        if (result.Decision == Decision.Reject)
+        {
+            _host.Report(LogLevel.Warn, "dyninput rejected: " + result.Code + " input=" + before);
+            TryFeedback(() => _host.Feedback.OnRejected(before, result.Code ?? string.Empty, result.Message ?? string.Empty));
+            return true;
+        }
+
+        if (WriteBoxText(box, result.Value))
+        {
+            _host.Report(LogLevel.Info, "dyninput replacement " + before + " => " + result.Value + " command=" + _contextCommand);
+            TryFeedback(() => _host.Feedback.OnReplaced(before, result.Value));
+        }
+        else
+        {
+            _host.Report(LogLevel.Warn, "dyninput replacement failed: " + before + " => " + result.Value);
+        }
+
+        return true;
+    }
+
+    private Conversion EvaluateDynamicInput(string text) =>
+        _host.Evaluate(new SubmitRequest(_contextKind, _contextCommand, text));
+
+    /// <summary>把一次改写/拒绝落到当前输入缓冲上（底部命令行与动态输入共用）。</summary>
+    private void ApplyConversion(int messageId, long key, PromptKind kind, object buffer)
+    {
+        // 输入缓冲的类型是 AutoCAD 未文档化的内部类型，用反射调用它的成员。
+        var bufferType = buffer.GetType();
+        var textProperty = bufferType.GetProperty("Text");
+        var replaceQueue = bufferType.GetMethod("ReplaceInputQueue", new[] { typeof(string) });
+        var setSelection = bufferType.GetMethod("OnSetSelectedTextQueue", new[] { typeof(int), typeof(int) });
+
+        _contextKind = kind;
+        var before = textProperty?.GetValue(buffer) as string ?? string.Empty;
+        var conversion = _host.Evaluate(new SubmitRequest(_contextKind, _contextCommand, before));
+
+        if (conversion.Decision == Decision.Pass) return;
+
+        if (conversion.Decision == Decision.Reject)
+        {
+            // 只记日志、不吞按键：吞掉 Enter 会让命令行彻底提交不了（0.4.4 的 bug）。
+            // 仍标记"这一笔已处理"，避免紧随其后的 WM_CHAR 重复记一遍日志。
+            NoteKeystrokeConsumed(messageId, key);
+            _host.Report(LogLevel.Warn, "rejected: " + conversion.Code + " " + conversion.Message + " input=" + before);
+            TryFeedback(() => _host.Feedback.OnRejected(before, conversion.Code ?? string.Empty, conversion.Message ?? string.Empty));
+            System.Media.SystemSounds.Beep.Play();
+            return;
+        }
+
+        if (replaceQueue is null || setSelection is null)
+        {
+            _host.Report(LogLevel.Warn, "replacement unavailable: input queue has no ReplaceInputQueue");
+            return;
+        }
+
+        // 与 AutoCAD 自己的命令行文本输入走同一条路：改写输入队列，而不是赋值 TextBox.Text。
+        _inHandler = true;
+        try
+        {
+            replaceQueue.Invoke(buffer, new object[] { conversion.Value });
+            setSelection.Invoke(buffer, new object[] { conversion.Value.Length, conversion.Value.Length });
+            NoteKeystrokeConsumed(messageId, key);
+            _host.Report(LogLevel.Info,
+                "replacement_requested " + before + " => " + conversion.Value + " command=" + _contextCommand +
+                " msg=0x" + messageId.ToString("X"));
+            TryFeedback(() => _host.Feedback.OnReplaced(before, conversion.Value));
+        }
+        finally
+        {
+            _inHandler = false;
+        }
+
+        // 原始 Enter/Space 继续按 AutoCAD 原生流程走，不合成按键。
     }
 
     /// <summary>
@@ -280,6 +385,23 @@ public abstract class KeystrokeAdapter : ICadAdapter
         return AllowedFocusByWindow(document);
     }
 
+    /// <summary>0.5.0：WPF 输入框是否能直接拿到（拿到就不必走事件回读的兜底路径）。</summary>
+    private static bool AllowedCommandLineFocus(Document document) => AllowedFocus(document);
+
+    /// <summary>
+    /// 0.5.0 兜底：焦点落在命令行窗口上——不管 WPF 输入框取不取得。判定逻辑与老版本窗口类名一致。
+    /// </summary>
+    private static bool IsCommandLineWindowFocused(Document document) => AllowedFocusByWindow(document);
+
+    /// <summary>0.5.0：焦点是否在动态输入框（DYN 打开时才有）。</summary>
+    private static bool IsDynamicInputWindowFocused()
+    {
+        var focus = GetFocus();
+        if (focus == IntPtr.Zero) return false;
+        var className = GetClassName(focus);
+        return className is "acdyninput" or "dyninput";
+    }
+
     /// <summary>
     /// 老版本（2015–2020）上 WPF 焦点类型可能拿不到，退回窗口类/子窗口判定。
     /// 类名白名单与 CADAutoIME 的 `_englishOnlyClasses` 同源：命令行、自动完成弹窗、动态输入框、工具提示。
@@ -307,6 +429,12 @@ public abstract class KeystrokeAdapter : ICadAdapter
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     private static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder name, int maxCount);
 
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowTextLength(IntPtr hWnd);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetWindowText(IntPtr hWnd, System.Text.StringBuilder text, int maxCount);
+
     private static string? GetClassName(IntPtr handle)
     {
         var buffer = new System.Text.StringBuilder(256);
@@ -314,6 +442,65 @@ public abstract class KeystrokeAdapter : ICadAdapter
         if (length <= 0) return null;
         var text = buffer.ToString(0, length);
         return text.Length == 0 ? null : text;
+    }
+
+    /// <summary>
+    /// 试取动态输入框。API 在早年版本里未必存在，全程反射，取不到返回 null。
+    /// </summary>
+    private static object? FindDynamicInputBox(Window window)
+    {
+        try
+        {
+            // CAD 2021+ 有 Editor.InputStatus/DynamicInput，早年没有，直接放弃。
+            var type = Type.GetType("Autodesk.AutoCAD.EditorInput.DynamicInput, acmgd", throwOnError: false);
+            if (type is null) return null;
+
+            var method = type.GetMethod("GetCurrentInputBox", BindingFlags.Public | BindingFlags.Static);
+            return method?.Invoke(null, null);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static string? ReadBoxText(object box)
+    {
+        try
+        {
+            var property = box.GetType().GetProperty("Text", BindingFlags.Public | BindingFlags.Instance);
+            return property?.GetValue(box) as string;
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    private static bool WriteBoxText(object box, string value)
+    {
+        try
+        {
+            var property = box.GetType().GetProperty("Text", BindingFlags.Public | BindingFlags.Instance);
+            if (property is null || !property.CanWrite) return false;
+            property.SetValue(box, value);
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    /// <summary>动态输入框没有公开读文本的口子时，至少能从焦点窗口的标题/文本窗口读回。</summary>
+    private static string? ReadDynamicInputText()
+    {
+        var focus = GetFocus();
+        if (focus == IntPtr.Zero) return null;
+        var length = GetWindowTextLength(focus);
+        if (length <= 0) return null;
+        var builder = new System.Text.StringBuilder(length + 1);
+        return GetWindowText(focus, builder, builder.Capacity) <= 0 ? null : builder.ToString();
     }
 
     /// <summary>单个文档的提示事件订阅。</summary>
