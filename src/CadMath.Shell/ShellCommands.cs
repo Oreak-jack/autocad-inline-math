@@ -170,7 +170,7 @@ public static class ShellCommands
     /// 焦点取证：在命令行里敲它，立刻把"插件眼里的焦点长什么样"写进日志。
     /// 拦截失效时先用它定性是焦点判定没中、还是输入缓冲取不到。
     /// </summary>
-    [CommandMethod("CM3FOCUS")]
+    [CommandMethod("CLMFOCUS")]
     public static void Focus()
     {
         var document = AcApp.DocumentManager.MdiActiveDocument;
