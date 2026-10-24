@@ -13,8 +13,8 @@
     <DebugType>none</DebugType>
     <GenerateDocumentationFile>false</GenerateDocumentationFile>
 
-    <!-- 许可与作者元数据：0.5.3 起改为 GPL-3.0-or-later（见 LICENSE）。 -->
-    <PackageLicenseExpression>GPL-3.0-or-later</PackageLicenseExpression>
+    <!-- 许可与作者元数据：MIT（见 LICENSE）。 -->
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <Authors>Oreak-jack</Authors>
     <Product>CadMath03 (AutoCAD Inline Math)</Product>
     <RepositoryUrl>https://github.com/Oreak-jack/autocad-inline-math</RepositoryUrl>

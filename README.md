@@ -348,8 +348,6 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\tests\Test-Setup
 
 ## 许可
 
-GPL-3.0-or-later，见 [LICENSE](LICENSE)。
+MIT，见 [LICENSE](LICENSE)。
 
-- 可以自由使用、修改、分发，包括商业环境中使用；分发时必须以同一许可提供源代码。
-- 0.5.2 及更早的版本仍按当时发布的 MIT 许可提供，已发出的副本不受影响。
-- 本项目**不包含也不分发**任何 Autodesk 二进制文件；编译期引用的 AutoCAD 托管程序集来自官方 NuGet 包（`ExcludeAssets="runtime"`），运行时由 AutoCAD 自己提供。
+本项目**不包含也不分发**任何 Autodesk 二进制文件；编译期引用的 AutoCAD 托管程序集来自官方 NuGet 包（`ExcludeAssets="runtime"`），运行时由 AutoCAD 自己提供。
