@@ -1,4 +1,4 @@
-using Autodesk.AutoCAD.DatabaseServices;
+﻿using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Runtime;
 using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
@@ -46,6 +46,38 @@ public static class ShellCommands
         }
 
         document.Editor.WriteMessage("\n回显：" + (feedback.Enabled ? "开" : "关") + "\n");
+    }
+
+    /// <summary>
+    /// 0.5.0：输入提示风格。AUTO = 跟随 AutoCAD 原生（默认），STANDARD = 统一提示。
+    /// 直接回车＝在两者之间切换。
+    /// </summary>
+    [CommandMethod("CM3STYLE")]
+    public static void Style()
+    {
+        var manager = ShellApplication.Manager;
+        var document = AcApp.DocumentManager.MdiActiveDocument;
+        if (manager is null || document is null) return;
+
+        var current = AdapterManager.DescribeStyle(manager.Style);
+        var options = new PromptKeywordOptions("\n提示风格（当前：" + current + "）[AUTO/STANDARD]", "AUTO STANDARD");
+        options.AllowNone = true;
+
+        var result = document.Editor.GetKeywords(options);
+        var next = manager.Style;
+        if (result.Status == PromptStatus.OK)
+        {
+            next = result.StringResult == "STANDARD" ? CadMath.Abstractions.PromptStyle.Standard : CadMath.Abstractions.PromptStyle.AutoCad;
+        }
+        else
+        {
+            next = manager.Style == CadMath.Abstractions.PromptStyle.Standard
+                ? CadMath.Abstractions.PromptStyle.AutoCad
+                : CadMath.Abstractions.PromptStyle.Standard;
+        }
+
+        manager.Style = next;
+        document.Editor.WriteMessage("\n提示风格：" + AdapterManager.DescribeStyle(next) + "\n");
     }
 
     [CommandMethod("CM3STATUS")]

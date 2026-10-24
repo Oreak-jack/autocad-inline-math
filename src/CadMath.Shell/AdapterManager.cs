@@ -47,6 +47,22 @@ internal sealed class AdapterManager : IDisposable
     }
 
     /// <summary>拦截总开关。适配器每次处理按键都会读它。</summary>
+    /// <summary>提示风格：AutoCAD = 与原生完全一致；Standard = 统一成现代提示（可加宽输入框）。</summary>
+    public PromptStyle Style
+    {
+        get => _style;
+        set
+        {
+            _style = value;
+            _log.Write(LogLevel.Info, "prompt style=" + DescribeStyle(value));
+        }
+    }
+
+    public static string DescribeStyle(PromptStyle style) =>
+        style == PromptStyle.Standard ? "standard" : "autocad";
+
+    private PromptStyle _style = PromptStyle.AutoCad;
+
     public bool Enabled { get; private set; } = true;
 
     public HostSeries Host { get; }
@@ -158,7 +174,7 @@ internal sealed class AdapterManager : IDisposable
 
     public string Describe()
     {
-        var text = $"{ProductInfo.Name} {ProductInfo.Version} 开启={Enabled} 适配器={Active?.Id ?? "-"} 宿主={Host} 替换请求={Replacements} 回显={(Feedback.Enabled ? "开" : "关")} 连败={Failures} 最后错误={(string.IsNullOrEmpty(LastError) ? "-" : LastError)}";
+        var text = $"{ProductInfo.Name} {ProductInfo.Version} 开启={Enabled} 适配器={Active?.Id ?? "-"} 宿主={Host} 替换请求={Replacements} 回显={(Feedback.Enabled ? "开" : "关")} 连败={Failures} 风格={DescribeStyle(Style)} 最后错误={(string.IsNullOrEmpty(LastError) ? "-" : LastError)}";
         if (_rejected.Count > 0) text += DescribeRejections();
         return text + "\n日志：" + LogFile.Path;
     }
