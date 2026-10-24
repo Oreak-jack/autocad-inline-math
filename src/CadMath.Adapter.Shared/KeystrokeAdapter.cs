@@ -21,8 +21,12 @@ namespace CadMath.Adapters;
 /// </summary>
 public abstract class KeystrokeAdapter : ICadAdapter
 {
-    /// <summary>允许改写的命令。其余命令——包括自定义命令与非 ASCII 输入——一律不碰。</summary>
-    private static readonly HashSet<string> AllowedCommands = new(StringComparer.OrdinalIgnoreCase)
+    /// <summary>
+    /// 0.5.0 起不再靠这份白名单放行：命令态取自 AutoCAD 自己的 CMDNAMES 系统变量
+    /// （`'` 分隔的嵌套命令名），任何需要距离/角度的命令都能用。
+    /// 这份清单只在读不到 CMDNAMES 时才作为兜底判据。
+    /// </summary>
+    private static readonly HashSet<string> FallbackAllowedCommands = new(StringComparer.OrdinalIgnoreCase)
     {
         "LINE", "PLINE", "CIRCLE", "ARC", "RECTANG", "OFFSET", "MOVE", "COPY", "ROTATE", "SCALE",
         "STRETCH", "FILLET", "CHAMFER", "POLYGON", "ELLIPSE", "LENGTHEN"
@@ -152,20 +156,82 @@ public abstract class KeystrokeAdapter : ICadAdapter
 
     private static string CommandOf(Document document) => document.CommandInProgress.TrimStart('_', '.');
 
+    /// <summary>
+    /// CMDNAMES 是 AutoCAD 自己的"当前命令名"系统变量，嵌套命令用 `'` 分隔（例如 `-LAYER'OFF`）。
+    /// 改成宏或透明命令时它比 CommandInProgress 更准，所以优先用它，读不到再退回文档属性。
+    /// </summary>
+    private static string[] ActiveCommands(Document document)
+    {
+        string raw = null;
+        try
+        {
+            var value = AcApp.GetSystemVariable("CMDNAMES");
+            raw = value as string;
+        }
+        catch
+        {
+            raw = null;
+        }
+
+        if (string.IsNullOrWhiteSpace(raw)) raw = document.CommandInProgress;
+        if (string.IsNullOrWhiteSpace(raw)) return Array.Empty<string>();
+
+        var parts = raw.Split(new[] { '\'' });
+        var commands = new List<string>(parts.Length);
+        foreach (var part in parts)
+        {
+            var name = part.Trim().TrimStart('_', '.');
+            if (name.Length > 0) commands.Add(name);
+        }
+
+        return commands.ToArray();
+    }
+
+    /// <summary>0.5.0 起命令态来自 CMDNAMES；只有在读不到任何命令名时才退回白名单。</summary>
+    private static bool IsInterceptableCommand(string[] commands)
+    {
+        if (commands.Length == 0) return false;
+        foreach (var command in commands)
+        {
+            if (!command.StartsWith("-", StringComparison.Ordinal)) return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>兜底判据：只用于 CMDNAMES 与传统取值都拿不到的极端情况。</summary>
+    private static bool IsFallbackAllowed(string name) =>
+        !string.IsNullOrEmpty(name) && FallbackAllowedCommands.Contains(name);
+
     /// <summary>提示开始。这里绝不写日志或做 I/O：jig 提示每秒可触发数百次。</summary>
     private void Begin(Document document, PromptKind kind)
     {
-        if (!_host.Enabled ||
-            !ReferenceEquals(document, AcApp.DocumentManager.MdiActiveDocument) ||
-            !AllowedCommands.Contains(CommandOf(document)))
+        if (!_host.Enabled || !ReferenceEquals(document, AcApp.DocumentManager.MdiActiveDocument))
         {
+            ClearContext();
+            return;
+        }
+
+        var name = CommandOf(document);
+        var commands = ActiveCommands(document);
+        if (!IsInterceptableCommand(commands))
+        {
+            // 命令态取不到（极早期/极少数宿主）：退回 0.3.3 的白名单。
+            if (commands.Length == 0 && IsFallbackAllowed(name))
+            {
+                _contextDocument = document;
+                _contextKind = kind;
+                _contextCommand = name;
+                return;
+            }
+
             ClearContext();
             return;
         }
 
         _contextDocument = document;
         _contextKind = kind;
-        _contextCommand = CommandOf(document);
+        _contextCommand = name;
     }
 
     private void End(Document document)
@@ -202,7 +268,7 @@ public abstract class KeystrokeAdapter : ICadAdapter
         var document = AcApp.DocumentManager.MdiActiveDocument;
         if (document is null || _contextDocument != document ||
             CommandOf(document) != _contextCommand ||
-            !AllowedCommands.Contains(_contextCommand))
+            !IsInterceptableCommand(ActiveCommands(document)))
         {
             return;
         }
