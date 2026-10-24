@@ -58,9 +58,11 @@ if (-not $version) { throw 'Directory.Build.props 里没有 <Version>。' }
 
 $dist = Join-Path $root 'dist'
 $bundle = Join-Path $dist 'CadMath03.bundle'
+$bundle2025 = Join-Path $dist 'CadMath03-2025.bundle'
 $bundle2024 = Join-Path $dist 'CadMath03-2024.bundle'
 $bundle2020 = Join-Path $dist 'CadMath03-2020.bundle'
 $win64 = Join-Path $bundle 'Contents\Win64'
+$win64_2025 = Join-Path $bundle 'Contents\Win64-2025'
 $win64_2024 = Join-Path $bundle 'Contents\Win64-2024'
 $win64_2020 = Join-Path $bundle 'Contents\Win64-2020'
 $staging = Join-Path $root 'objs\publish'
@@ -69,7 +71,7 @@ Write-Host "CadMath $version  |  $Configuration  |  Experimental=$($Experimental
 
 if (Test-Path $dist) { Remove-Item $dist -Recurse -Force }
 if (Test-Path $staging) { Remove-Item $staging -Recurse -Force }
-New-Item -ItemType Directory -Force -Path $win64, (Join-Path $win64 'Adapters'), $win64_2024, (Join-Path $win64_2024 'Adapters'), $win64_2020, (Join-Path $win64_2020 'Adapters'), $staging | Out-Null
+New-Item -ItemType Directory -Force -Path $win64, (Join-Path $win64 'Adapters'), $win64_2025, (Join-Path $win64_2025 'Adapters'), $win64_2024, (Join-Path $win64_2024 'Adapters'), $win64_2020, (Join-Path $win64_2020 'Adapters'), $staging | Out-Null
 
 function Build-Project([string]$project, [string]$output, [string]$framework = '', [string[]]$properties = @()) {
     Write-Host "  构建 $project $framework $($properties -join ' ')"
@@ -89,20 +91,24 @@ function Build-Project([string]$project, [string]$output, [string]$framework = '
     if ($LASTEXITCODE -ne 0) { throw "构建失败：$project $framework $($properties -join ' ')" }
 }
 
-# ---- 三个宿主：目录、目标框架、AutoCAD 引用版本 -------------------------
+# ---- 四个宿主：目录、目标框架、AutoCAD 引用版本 -------------------------
+# 编译锚的取法见 docs/VERSION-MATRIX.md：每个 band 用 band 内最旧的 SDK 编一份，
+# 这样编出来的程序集只依赖最旧版本就有的 API，在更新的宿主上运行时由 AutoCAD 解析成它自己那一份。
 $hostsPlan = @(
-    [ordered]@{ key = 'win64'; dir = $win64; framework = 'net8.0-windows'; staging = 'shell-net8'; properties = @('-p:AcadSdkVersion=25.1.0'); note = '2025 / 2026 · .NET 8'; sdk = '25.1.0' },
-    [ordered]@{ key = 'win64-2024'; dir = $win64_2024; framework = 'net48'; staging = 'shell-net48-2024'; properties = @('-p:AcadLegacySdkVersion=24.3.0'); note = '2021–2024 · .NET Framework 4.8'; sdk = '24.3.0' },
+    [ordered]@{ key = 'win64'; dir = $win64; framework = 'net8.0-windows'; staging = 'shell-net8'; properties = @('-p:AcadSdkVersion=25.1.0'); note = '2026 · .NET 8'; sdk = '25.1.0' },
+    [ordered]@{ key = 'win64-2025'; dir = $win64_2025; framework = 'net8.0-windows'; staging = 'shell-net8-2025'; properties = @('-p:AcadSdkVersion=25.0.1', '-p:AcadSdkModelVersion=25.0.0'); note = '2025 · .NET 8'; sdk = '25.0.1' },
+    [ordered]@{ key = 'win64-2024'; dir = $win64_2024; framework = 'net48'; staging = 'shell-net48-2024'; properties = @('-p:AcadLegacySdkVersion=24.0.0'); note = '2021–2024 · .NET Framework 4.8'; sdk = '24.0.0' },
     [ordered]@{ key = 'win64-2020'; dir = $win64_2020; framework = 'net48'; staging = 'shell-net48-2020'; properties = @('-p:AcadLegacySdkVersion=23.1.0'); note = '2020 · .NET Framework 4.8'; sdk = '23.1.0' }
 )
 
 $adaptersPlan = @(
     [ordered]@{ key = 'modern'; project = 'src\CadMath.Adapter.Modern\CadMath.Adapter.Modern.csproj'; host = 'win64'; file = 'CadMath.Adapter.Modern.dll' },
+    [ordered]@{ key = 'modern2025'; project = 'src\CadMath.Adapter.Modern2025\CadMath.Adapter.Modern2025.csproj'; host = 'win64-2025'; file = 'CadMath.Adapter.Modern2025.dll' },
     [ordered]@{ key = 'legacy2024'; project = 'src\CadMath.Adapter.Legacy2024\CadMath.Adapter.Legacy2024.csproj'; host = 'win64-2024'; file = 'CadMath.Adapter.Legacy2024.dll' },
     [ordered]@{ key = 'legacy2020'; project = 'src\CadMath.Adapter.Legacy2020\CadMath.Adapter.Legacy2020.csproj'; host = 'win64-2020'; file = 'CadMath.Adapter.Legacy2020.dll' }
 )
 
-Write-Host '构建 Shell（三个宿主）'
+Write-Host '构建 Shell（四个宿主）'
 foreach ($plan in $hostsPlan) {
     Build-Project 'src\CadMath.Shell\CadMath.Shell.csproj' (Join-Path $staging $plan.staging) $plan.framework $plan.properties
 }
@@ -155,7 +161,13 @@ function Write-ApplicationPackage([string]$template, [string]$targetFile) {
 
 Write-ApplicationPackage 'bundle\PackageContents.xml' (Join-Path $bundle 'PackageContents.xml')
 
-# 2024 / 2020 各出一份独立 bundle（给 ApplicationPlugins 全局安装用），内容取自各自的宿主体
+# 2025 / 2024 / 2020 各出一份独立 bundle（给 ApplicationPlugins 全局安装用），内容取自各自的宿主体。
+# 分开的理由：PackageContents 的 SeriesMin/Max 决定"哪个 CAD 版本会加载这份 bundle"，
+# 而每份 bundle 里的 DLL 只能用对应那一代 SDK 编出来的二进制。
+New-Item -ItemType Directory -Force -Path (Join-Path $bundle2025 'Contents') | Out-Null
+Copy-Item -Recurse -Force $win64_2025 (Join-Path $bundle2025 'Contents\Win64-2025')
+Write-ApplicationPackage 'bundle\PackageContents-2025.xml' (Join-Path $bundle2025 'PackageContents.xml')
+
 New-Item -ItemType Directory -Force -Path (Join-Path $bundle2024 'Contents') | Out-Null
 Copy-Item -Recurse -Force $win64_2024 (Join-Path $bundle2024 'Contents\Win64-2024')
 Write-ApplicationPackage 'bundle\PackageContents-2024.xml' (Join-Path $bundle2024 'PackageContents.xml')
@@ -170,12 +182,16 @@ CadMath03 $version
 配置: $Configuration
 实验包: $($Experimental.IsPresent)
 
-[2025 / 2026 · .NET 8]  Contents/Win64
+[2026 · .NET 8]  Contents/Win64
   CadMath03.dll            (net8.0-windows, 官方 NuGet 25.1.0 引用)
   Adapters/CadMath.Adapter.Modern.dll
 
+[2025 · .NET 8]  Contents/Win64-2025
+  CadMath03.dll            (net8.0-windows, 官方 NuGet 25.0.1 引用)
+  Adapters/CadMath.Adapter.Modern2025.dll
+
 [2021–2024 · .NET Framework 4.8]  Contents/Win64-2024
-  CadMath03.dll            (net48, 官方 NuGet 24.3.0 引用)
+  CadMath03.dll            (net48, 官方 NuGet 24.0.0 引用 —— band 内最旧，2024 也能跑)
   Adapters/CadMath.Adapter.Legacy2024.dll
 
 [2020 · .NET Framework 4.8]  Contents/Win64-2020
@@ -183,12 +199,14 @@ CadMath03 $version
   Adapters/CadMath.Adapter.Legacy2020.dll
 "@
 [IO.File]::WriteAllText((Join-Path $bundle 'BUILD-INFO.txt'), $buildInfo, (New-Object Text.UTF8Encoding($true)))
+[IO.File]::WriteAllText((Join-Path $bundle2025 'BUILD-INFO.txt'), $buildInfo, (New-Object Text.UTF8Encoding($true)))
 [IO.File]::WriteAllText((Join-Path $bundle2024 'BUILD-INFO.txt'), $buildInfo, (New-Object Text.UTF8Encoding($true)))
 [IO.File]::WriteAllText((Join-Path $bundle2020 'BUILD-INFO.txt'), $buildInfo, (New-Object Text.UTF8Encoding($true)))
 
 # ---- 发行清单 setup.json ------------------------------------------------
 $hosts = @(
-    [ordered]@{ series = @('R25.0', 'R25.1'); runtime = 'net8.0-windows'; entry = 'Contents/Win64/CadMath03.dll'; bundle = 'CadMath03.bundle' },
+    [ordered]@{ series = @('R25.1'); runtime = 'net8.0-windows'; entry = 'Contents/Win64/CadMath03.dll'; bundle = 'CadMath03.bundle' },
+    [ordered]@{ series = @('R25.0'); runtime = 'net8.0-windows'; entry = 'Contents/Win64-2025/CadMath03.dll'; bundle = 'CadMath03-2025.bundle' },
     [ordered]@{ series = @('R24.0', 'R24.1', 'R24.2', 'R24.3'); runtime = 'net48'; entry = 'Contents/Win64-2024/CadMath03.dll'; bundle = 'CadMath03-2024.bundle' },
     [ordered]@{ series = @('R23.1'); runtime = 'net48'; entry = 'Contents/Win64-2020/CadMath03.dll'; bundle = 'CadMath03-2020.bundle' }
 )
@@ -263,6 +281,7 @@ if (-not $NoZip) {
     $zip = Join-Path $dist $name
     $items = @(
         $bundle,
+        $bundle2025,
         $bundle2024,
         $bundle2020,
         (Join-Path $dist 'CadMath-Setup.cmd'),
@@ -278,4 +297,4 @@ if (-not $NoZip) {
 
 Write-Host ''
 Write-Host '完成。'
-Write-Host '  2025/2026：Contents\Win64；2021–2024：Contents\Win64-2024；2020：Contents\Win64-2020。'
+Write-Host '  2026：Contents\Win64；2025：Contents\Win64-2025；2021–2024：Contents\Win64-2024；2020：Contents\Win64-2020。'

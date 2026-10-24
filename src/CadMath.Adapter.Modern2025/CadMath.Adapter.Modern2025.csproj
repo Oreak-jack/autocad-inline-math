@@ -1,0 +1,31 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <RootNamespace>CadMath.Adapter.Modern2025</RootNamespace>
+    <AssemblyName>CadMath.Adapter.Modern2025</AssemblyName>
+    <Description>AutoCAD 2025 输入拦截适配器：用 2025 的 SDK 编译，只依赖 2025 已有的 API。</Description>
+    <UseWPF>true</UseWPF>
+    <UseWindowsForms>true</UseWindowsForms>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CadMath.Abstractions\CadMath.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\CadMath.Adapter.Shared\**\*.cs" LinkBase="Shared" />
+  </ItemGroup>
+
+  <!-- 官方 NuGet 引用程序集：只编译、不复制（ExcludeAssets=runtime），装到用户机器上的是 AutoCAD 自己那份。
+       这里刻意用 2025（25.0.x）而不是 2026（25.1.0）：编译锚取 band 内最旧的 SDK，才能在更新的宿主上运行。
+       注意三个包的版本号不同步：AutoCAD.NET 有 25.0.1，但 Model / Core 只有 25.0.0（再往上是 25.0.2，只支持 net10）。 -->
+  <ItemGroup>
+    <PackageReference Include="AutoCAD.NET" Version="25.0.1" ExcludeAssets="runtime" PrivateAssets="none" />
+    <PackageReference Include="AutoCAD.NET.Model" Version="25.0.0" ExcludeAssets="runtime" PrivateAssets="none" />
+    <PackageReference Include="AutoCAD.NET.Core" Version="25.0.0" ExcludeAssets="runtime" PrivateAssets="none" />
+  </ItemGroup>
+
+</Project>

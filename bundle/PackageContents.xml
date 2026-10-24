@@ -3,7 +3,9 @@
  <CompanyDetails Name="CadMath" />
  <!-- 构建脚本会把 __CADMATH_VERSION__ 换成 Directory.Build.props 里的 Version。不要在别处再写死版本。 -->
  <Components>
-  <RuntimeRequirements OS="Win64" Platform="AutoCAD" SeriesMin="R25.0" SeriesMax="R25.1" />
+  <!-- 这份 bundle 只给 2026（R25.1）：Contents\Win64 是用 2026 的 SDK 编的。
+       2025（R25.0）有独立的 CadMath03-2025.bundle，避免让 2025 去加载 2026 编出来的二进制。 -->
+  <RuntimeRequirements OS="Win64" Platform="AutoCAD" SeriesMin="R25.1" SeriesMax="R25.1" />
   <ComponentEntry AppName="CadMath03" AppType=".Net" Version="__CADMATH_VERSION__" ModuleName="./Contents/Win64/CadMath03.dll" LoadOnAutoCADStartup="True" />
  </Components>
 </ApplicationPackage>

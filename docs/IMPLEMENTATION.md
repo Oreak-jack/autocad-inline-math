@@ -1,4 +1,4 @@
-# 实施记录：0.3.3 → 0.4.1
+﻿﻿﻿# 实施记录：0.3.3 → 0.4.1
 
 这份文档回答四个问题：原来那些代码去了哪、新架构怎么跑起来、哪些对外行为绝对不能变、以及怎么证明它没变。
 设计意图见 [ARCHITECTURE.md](ARCHITECTURE.md)（计划版，部分命名在实施时做了调整，以本文为准）。
@@ -198,12 +198,12 @@ PreTranslateMessage(msg)
 
 | 项目 | 做法 | 结果 |
 | --- | --- | --- |
-| 清单 | `Read-SetupManifest dist\setup.json` | 8 个文件、`modern-r25=host-tested`、`legacy-r24=planned` |
-| 匹配 | 假实例 2024 / 2026 | 2024 → `legacy-r24`（`host-tested`）；2026 → `modern-r25`；未开放的版本仍以 `status-planned` 拒绝 |
+| 清单 | `Read-SetupManifest dist\setup.json` | 43 个文件、`modern-r26=host-tested`、`modern-r25=built`、`legacy-r24=host-tested`、`legacy-r23=planned` |
+| 匹配 | 假实例 2024 / 2025 / 2026 | 2024 → `legacy-r24`（`host-tested`）；2025 → `modern-r25`（`built`）；2026 → `modern-r26`（`host-tested`）；未开放的版本仍以 `status-planned` 拒绝 |
 | 安装 | 隔离状态根 + 假注册表，`-Install <实例> -Yes` | 退出码 0，注册项/负载/`state.json`/`TRUSTEDPATHS` 全部正确 |
 | 幂等 | 重复安装同一版本 | 视为修复，退出码 0 |
 | 回滚 | `CADMATH_SETUP_INJECT_FAILURE=register` | 退出码 3，日志 `已恢复安装前的注册表与负载状态`，旧安装完好、`pending.json` 不存在 |
 | 崩溃恢复 | 手工造 journal + 挪走旧负载 | `Restore-PendingTransaction` 恢复版本与负载，journal 清除 |
 | 卸载 | `-Remove <实例>` | 注册项消失、`TRUSTEDPATHS` 回到原值、无实例引用时删 payload |
 | 安全 | CAD 运行中 | 拒绝安装并提示关闭 CAD |
-| 全部用例 | `tools\setup\tests\Test-Setup.ps1` | **通过 33 项，失败 0 项** |
+| 全部用例 | `tools\setup\tests\Test-Setup.ps1` | **通过 38 项，失败 0 项** |

@@ -100,12 +100,17 @@ try {
     Set-ItemProperty -Path ($product25 + '\Profiles\<<未命名配置>>\Variables') -Name TRUSTEDPATHS -Value 'C:\Existing\Path'
     New-Item -Path $product24 -Force | Out-Null
     New-Item -Path $product23 -Force | Out-Null
+    $product25a = Join-Path $regRoot 'R25.0\ACAD-A001:804'
+    New-Item -Path $product25a -Force | Out-Null
     $machine25 = Join-Path $machineRoot 'R25.1\ACAD-9101:804'
     $machine24 = Join-Path $machineRoot 'R24.3\ACAD-9010:409'
     $machine23 = Join-Path $machineRoot 'R23.1\ACAD-D001:804'
     New-Item -Path $machine25 -Force | Out-Null
     New-Item -Path $machine24 -Force | Out-Null
     New-Item -Path $machine23 -Force | Out-Null
+    $machine25a = Join-Path $machineRoot 'R25.0\ACAD-A001:804'
+    New-Item -Path $machine25a -Force | Out-Null
+    Set-ItemProperty -Path $machine25a -Name AcadLocation -Value 'C:\Program Files\Autodesk\AutoCAD 2025\'
     Set-ItemProperty -Path $machine25 -Name AcadLocation -Value 'D:\AutoCAD 2026\'
     Set-ItemProperty -Path $machine24 -Name AcadLocation -Value 'C:\Program Files\Autodesk\AutoCAD 2024\'
     Set-ItemProperty -Path $machine23 -Name AcadLocation -Value 'C:\Program Files\Autodesk\AutoCAD 2020\'
@@ -114,6 +119,7 @@ try {
     $scan = Invoke-EnvironmentScan -RegistryRoot $regRoot -MachineRegistryRoot $machineRoot -AppsRoot $appsRoot -StateRoot $stateRoot
     $setup = Read-SetupManifest -Path $SetupJson
     $instance25 = @($scan.Instances | Where-Object { $_.Release -eq 'R25.1' })[0]
+    $instance25a = @($scan.Instances | Where-Object { $_.Release -eq 'R25.0' })[0]
     $instance24 = @($scan.Instances | Where-Object { $_.Release -eq 'R24.3' })[0]
     $instance23 = @($scan.Instances | Where-Object { $_.Release -eq 'R23.1' })[0]
 
@@ -146,19 +152,25 @@ try {
 
     Write-Host ''
     Write-Host '=== 适配器匹配' -ForegroundColor Cyan
-    Check '2026 实例匹配到 modern-r25' {
+    Check '2026 实例匹配到 modern-r26' {
         $m = Select-AdapterForInstance -Setup $setup -Instance $instance25 -Architecture 'x64'
+        $m.Status -eq 'matched' -and $m.Adapter.id -eq 'modern-r26'
+    }
+    Check '2025 实例匹配到 modern-r25（用 2025 的 SDK 编译的那一份）' {
+        $m = Select-AdapterForInstance -Setup $setup -Instance $instance25a -Architecture 'x64'
         $m.Status -eq 'matched' -and $m.Adapter.id -eq 'modern-r25'
     }
     Check '2024 实例匹配到 legacy-r24（0.4.3 起转为正式支持）' {
         $m = Select-AdapterForInstance -Setup $setup -Instance $instance24 -Architecture 'x64'
         $m.Status -eq 'matched' -and $m.Adapter.id -eq 'legacy-r24'
     }
-    Check '宿主按 CAD 系列选择入口 DLL（2025/2026 走 .NET 8，2021–2024 走 Win64-2024，2020 走 Win64-2020）' {
-        $h25 = Get-HostForSeries -Setup $setup -Series 'R25.1'
+    Check '宿主按 CAD 系列选择入口 DLL（2026→Win64，2025→Win64-2025，2021–2024→Win64-2024，2020→Win64-2020）' {
+        $h26 = Get-HostForSeries -Setup $setup -Series 'R25.1'
+        $h25 = Get-HostForSeries -Setup $setup -Series '25.0'
         $h24 = Get-HostForSeries -Setup $setup -Series '24.3'
         $h23 = Get-HostForSeries -Setup $setup -Series 'R23.1'
-        $h25.entry -eq 'Contents/Win64/CadMath03.dll' -and
+        $h26.entry -eq 'Contents/Win64/CadMath03.dll' -and
+            $h25.entry -eq 'Contents/Win64-2025/CadMath03.dll' -and
             $h24.entry -eq 'Contents/Win64-2024/CadMath03.dll' -and
             $h23.entry -eq 'Contents/Win64-2020/CadMath03.dll' -and
             $null -eq (Get-HostForSeries -Setup $setup -Series 'R23.0')
@@ -289,7 +301,7 @@ try {
         $end = $r.Output.LastIndexOf('}')
         if ($start -lt 0 -or $end -le $start) { return $false }
         $parsed = $r.Output.Substring($start, $end - $start + 1) | ConvertFrom-Json
-        $r.ExitCode -eq 0 -and @($parsed.CadInstances).Count -eq 3
+        $r.ExitCode -eq 0 -and @($parsed.CadInstances).Count -eq 4
     }
     Check '安装到 2026 实例成功，注册项与负载就位' {
         $r = Invoke-Cli -Extra @('-Install', 'R25.1\ACAD-9101:804', '-Yes')

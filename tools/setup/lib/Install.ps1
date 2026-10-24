@@ -1,6 +1,10 @@
 ﻿# CadMath 安装工具 · 安装 / 更新 / 卸载（含事务与回滚）
 Set-StrictMode -Version 2
 
+# ApplicationPlugins 全局模式下会部署的 bundle 名字（顺序即部署顺序）。
+# 每份 bundle 只承载一个 CLR 代 / 一个 SDK 编译锚，见 docs/VERSION-MATRIX.md。
+$script:CadMathBundleNames = @('CadMath03.bundle', 'CadMath03-2025.bundle', 'CadMath03-2024.bundle', 'CadMath03-2020.bundle')
+
 function Get-StateFile { param([string]$StateRoot) return (Join-Path $StateRoot 'state.json') }
 function Get-JournalFile { param([string]$StateRoot) return (Join-Path $StateRoot 'pending.json') }
 function Get-PayloadRoot { param([string]$StateRoot) return (Join-Path $StateRoot 'payload') }
@@ -136,7 +140,7 @@ function Get-RemovableDirectories {
     if ($PayloadDir) {
         foreach ($dir in (Get-OwnedDirectories -PayloadDir $PayloadDir)) { $result.Add($dir) }
     }
-    foreach ($bundleName in @('CadMath03.bundle', 'CadMath03-2024.bundle', 'CadMath03-2020.bundle')) {
+    foreach ($bundleName in $script:CadMathBundleNames) {
         $bundleDir = Join-Path (Get-ApplicationsRoot) $bundleName
         foreach ($hostDir in @(Get-ChildItem -LiteralPath (Join-Path $bundleDir 'Contents') -Directory -ErrorAction SilentlyContinue | Where-Object { $_.Name -like 'Win64*' } | Sort-Object Name)) {
             $result.Add($hostDir.FullName)
@@ -523,13 +527,13 @@ function Uninstall-CadMathInstances {
 # 注册表零改动，跟 0.3.x 的老做法完全一致。
 
 function Get-GlobalBundlePaths {
-    # 全局模式可能装三份：CadMath03.bundle（2025/2026，.NET 8）、
-    # CadMath03-2024.bundle（2021–2024）与 CadMath03-2020.bundle（2020）。三者互不干扰。
+    # 全局模式可能装四份：CadMath03.bundle（2026）、CadMath03-2025.bundle（2025）、
+    # CadMath03-2024.bundle（2021–2024）与 CadMath03-2020.bundle（2020）。四者互不干扰。
     param([string]$AppsRoot)
     $root = $AppsRoot
     if ([string]::IsNullOrWhiteSpace($root)) { $root = Get-ApplicationsRoot }
     $list = New-Object System.Collections.Generic.List[object]
-    foreach ($name in @('CadMath03.bundle', 'CadMath03-2024.bundle', 'CadMath03-2020.bundle')) {
+    foreach ($name in $script:CadMathBundleNames) {
         $list.Add([pscustomobject]@{ Name = $name; Path = (Join-Path $root $name) })
     }
     return $list.ToArray()

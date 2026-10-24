@@ -1,10 +1,10 @@
-﻿<Project>
+<Project>
 
   <PropertyGroup>
     <!-- 唯一版本号：程序集版本、安装包清单、CM3STATUS 都从这里来。 -->
-    <Version>0.4.9</Version>
-    <AssemblyVersion>0.4.9.0</AssemblyVersion>
-    <FileVersion>0.4.9.0</FileVersion>
+    <Version>0.4.10</Version>
+    <AssemblyVersion>0.4.10.0</AssemblyVersion>
+    <FileVersion>0.4.10.0</FileVersion>
 
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
@@ -17,13 +17,17 @@
     <AcadDir Condition="'$(AcadDir)' == ''">$(ACAD_REFERENCE_DIR)</AcadDir>
 
     <!--
-      官方 NuGet 引用版本（只编译、不复制）：
-        AcadSdkVersion        .NET 8 宿主：25.1.0 = AutoCAD 2026；想同时覆盖 2025 可改成 25.0.1。
-        AcadLegacySdkVersion  .NET Framework 宿主：24.3.0 = AutoCAD 2021–2024；23.1.0 = AutoCAD 2020。
+      官方 NuGet 引用版本（只编译、不复制）。取法见 docs/VERSION-MATRIX.md：
+      **编译锚取 band 内最旧的 SDK**，这样编出来的程序集只依赖旧版本就有的 API，
+      在更新的宿主上运行时由 AutoCAD 解析成它自己那一份，于是"一个 band 只编一份、只测最新一个版本"。
+        AcadSdkVersion        .NET 8 宿主：25.0.1 = AutoCAD 2025；25.1.0 = AutoCAD 2026。
+        AcadLegacySdkVersion  .NET Framework 宿主：24.0.0 = AutoCAD 2021（覆盖 2021–2024）；23.1.0 = AutoCAD 2020。
       改这两个属性即可换编译基准，不必逐个项目改 csproj。
     -->
     <AcadSdkVersion Condition="'$(AcadSdkVersion)' == ''">25.1.0</AcadSdkVersion>
-    <AcadLegacySdkVersion Condition="'$(AcadLegacySdkVersion)' == ''">24.3.0</AcadLegacySdkVersion>
+    <!-- AutoCAD.NET.Model / .Core 的版本号与 AutoCAD.NET 不一定同步（2025 只有 25.0.0/25.0.2，没有 25.0.1）。 -->
+    <AcadSdkModelVersion Condition="'$(AcadSdkModelVersion)' == ''">$(AcadSdkVersion)</AcadSdkModelVersion>
+    <AcadLegacySdkVersion Condition="'$(AcadLegacySdkVersion)' == ''">24.0.0</AcadLegacySdkVersion>
   </PropertyGroup>
 
 </Project>

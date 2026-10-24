@@ -2,16 +2,28 @@
   "schemaVersion": 1,
   "adapters": [
     {
-      "id": "modern-r25",
-      "displayName": "现代适配器（AutoCAD 2025 / 2026）",
+      "id": "modern-r26",
+      "displayName": "现代适配器（AutoCAD 2026）",
       "assembly": "Adapters/CadMath.Adapter.Modern.dll",
       "type": "CadMath.Adapter.Modern.ModernAdapter",
-      "series": [ "R25.0", "R25.1" ],
+      "series": [ "R25.1" ],
       "priority": 100,
       "verified": true,
       "status": "host-tested",
       "runtime": "net8.0-windows",
       "host": "win64"
+    },
+    {
+      "id": "modern-r25",
+      "displayName": "现代适配器（AutoCAD 2025）",
+      "assembly": "Adapters/CadMath.Adapter.Modern2025.dll",
+      "type": "CadMath.Adapter.Modern2025.Modern2025Adapter",
+      "series": [ "R25.0" ],
+      "priority": 100,
+      "verified": false,
+      "status": "built",
+      "runtime": "net8.0-windows",
+      "host": "win64-2025"
     },
     {
       "id": "legacy-r24",

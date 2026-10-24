@@ -24,11 +24,13 @@
     </None>
   </ItemGroup>
 
-  <!-- AutoCAD 2025/2026：官方 NuGet，只编译不复制。 -->
+  <!-- AutoCAD 2025/2026：官方 NuGet，只编译不复制。
+       注意 AutoCAD.NET 与 AutoCAD.NET.Model/.Core 的版本号不一定同步发布
+       （2025 只有 AutoCAD.NET 25.0.1，Model/Core 最高是 25.0.0），所以分开两个属性。 -->
   <ItemGroup Condition="'$(TargetFramework)' == 'net8.0-windows'">
     <PackageReference Include="AutoCAD.NET" Version="$(AcadSdkVersion)" ExcludeAssets="runtime" />
-    <PackageReference Include="AutoCAD.NET.Model" Version="$(AcadSdkVersion)" ExcludeAssets="runtime" />
-    <PackageReference Include="AutoCAD.NET.Core" Version="$(AcadSdkVersion)" ExcludeAssets="runtime" />
+    <PackageReference Include="AutoCAD.NET.Model" Version="$(AcadSdkModelVersion)" ExcludeAssets="runtime" />
+    <PackageReference Include="AutoCAD.NET.Core" Version="$(AcadSdkModelVersion)" ExcludeAssets="runtime" />
   </ItemGroup>
 
   <!-- AutoCAD 2021–2024 / 2020：官方 NuGet 的 .NET Framework 程序集，用 -p:AcadLegacySdkVersion 选基准。 -->

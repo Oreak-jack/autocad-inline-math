@@ -4,7 +4,7 @@
     <TargetFramework>net48</TargetFramework>
     <RootNamespace>CadMath.Adapter.Legacy2024</RootNamespace>
     <AssemblyName>CadMath.Adapter.Legacy2024</AssemblyName>
-    <Description>AutoCAD 2024（R24.x）输入拦截适配器：同一份源码，NET Framework 4.8 编译。</Description>
+    <Description>AutoCAD 2021–2024（R24.x）输入拦截适配器：同一份源码，NET Framework 4.8 编译。</Description>
     <UseWPF>true</UseWPF>
     <Platforms>x64</Platforms>
     <PlatformTarget>x64</PlatformTarget>
@@ -22,11 +22,13 @@
     <Compile Include="..\CadMath.Adapter.Shared\**\*.cs" LinkBase="Shared" />
   </ItemGroup>
 
-  <!-- AutoCAD 2024 的官方引用程序集（lib/net47）。只编译、不复制。 -->
+  <!-- 官方引用程序集（lib/net47）。只编译、不复制。
+       编译锚取该 band 内最旧的 SDK（24.0.0 = AutoCAD 2021），这样编出来的程序集只依赖 2021 就有的 API，
+       在 2022/2023/2024 上运行时，AutoCAD 会用进程里更新的同名程序集解析，不需要为每个版本单独编一份。 -->
   <ItemGroup>
-    <PackageReference Include="AutoCAD.NET" Version="24.3.0" ExcludeAssets="runtime" PrivateAssets="none" />
-    <PackageReference Include="AutoCAD.NET.Model" Version="24.3.0" ExcludeAssets="runtime" PrivateAssets="none" />
-    <PackageReference Include="AutoCAD.NET.Core" Version="24.3.0" ExcludeAssets="runtime" PrivateAssets="none" />
+    <PackageReference Include="AutoCAD.NET" Version="24.0.0" ExcludeAssets="runtime" PrivateAssets="none" />
+    <PackageReference Include="AutoCAD.NET.Model" Version="24.0.0" ExcludeAssets="runtime" PrivateAssets="none" />
+    <PackageReference Include="AutoCAD.NET.Core" Version="24.0.0" ExcludeAssets="runtime" PrivateAssets="none" />
   </ItemGroup>
 
 </Project>

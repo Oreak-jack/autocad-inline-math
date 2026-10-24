@@ -1,4 +1,4 @@
-# CadMath 架构（重写版）
+﻿﻿# CadMath 架构（重写版）
 
 目标：把 v0.3.3 的单文件插件拆成"计算引擎 / 适配器契约 / 宿主外壳 / 版本适配器"四层，
 让数学逻辑和 AutoCAD API 互不越界，把"能不能改"的问题先解决掉。安装器不在本次范围内。
@@ -230,7 +230,7 @@ v0.3.3 的 541 条解析断言与 45 条路由断言**原样搬过来**当作回
 ## 10. 多代 CLR 宿主（0.4.2 起）
 
 AutoCAD 2020 / 2021–2024 是 .NET Framework 4.7/4.8，2025/2026 是 .NET 8。一个插件 DLL 不可能同时被两个运行时加载，
-所以在**同一个发行包**里放多代宿主，由安装器按实例选择（0.4.4 起共三份：`Win64`、`Win64-2024`、`Win64-2020`）。
+所以在**同一个发行包**里放多代宿主，由安装器按实例选择（0.4.10 起共四份：`Win64` 给 2026、`Win64-2025` 给 2025、`Win64-2024` 给 2021–2024、`Win64-2020` 给 2020）。每份的编译锚取该 band 内最旧的 SDK，见 docs/VERSION-MATRIX.md。
 
 ### 分层上的变化
 
@@ -244,7 +244,7 @@ AutoCAD 2020 / 2021–2024 是 .NET Framework 4.7/4.8，2025/2026 是 .NET 8。�
   （net8 用可卸载的 `AssemblyLoadContext`，net48 用 `Assembly.LoadFrom` + `AssemblyResolve` 把
   `CadMath.Core`/`CadMath.Abstractions` 指回 Shell 已加载的一份，避免类型身份分裂）。
 - 引用来自**官方 NuGet**（`AutoCAD.NET` / `.Model` / `.Core`），不再依赖本机安装路径：
-  25.1.0 供 .NET 8、24.3.0 与 23.1.0 供 .NET Framework 4.8，都带 `ExcludeAssets="runtime"`，不会把 Autodesk 的 DLL 打进去。
+  25.1.0 供 2026 宿主、25.0.1 供 2025 宿主、24.0.0 与 23.1.0 供 .NET Framework 宿主，都带 `ExcludeAssets="runtime"`，不会把 Autodesk 的 DLL 打进去。
 - `build.ps1` 对同一工程切换 SDK 版本时必须加 `-t:Rebuild`，否则中间产物会复用上一轮的引用。
 
 ### 发行清单的变化

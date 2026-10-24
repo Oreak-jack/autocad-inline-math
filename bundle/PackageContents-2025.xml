@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ApplicationPackage SchemaVersion="1.0" AutodeskProduct="AutoCAD" Name="CadMath03-2025" AppVersion="__CADMATH_VERSION__" Description="Arithmetic in native bottom command line (AutoCAD 2025)" Author="CadMath" ProductCode="{3C9A5E17-5B24-4E8B-9E3D-7A1F2B6C4D08}" UpgradeCode="{0937D725-1309-48F0-A258-BC54916D174A}">
+ <CompanyDetails Name="CadMath" />
+ <!-- 2025（R25.0）：.NET 8 宿主，用 2025 的 SDK 编译。与 2026 那份 bundle 分开，
+      因为 2026 的二进制用了 2026 才有的 API，官方只担保"用旧 SDK 编的能在新版本上跑"。 -->
+ <Components>
+  <RuntimeRequirements OS="Win64" Platform="AutoCAD" SeriesMin="R25.0" SeriesMax="R25.0" />
+  <ComponentEntry AppName="CadMath03-2025" AppType=".Net" Version="__CADMATH_VERSION__" ModuleName="./Contents/Win64-2025/CadMath03.dll" LoadOnAutoCADStartup="True" />
+ </Components>
+</ApplicationPackage>
