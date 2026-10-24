@@ -18,6 +18,7 @@ param(
     [switch]$Json,
     [switch]$NoNetwork,
     [switch]$RemoveLegacyBundle,
+    [switch]$Rollback,
     [switch]$Yes,
     [switch]$Quiet
 )
@@ -170,15 +171,15 @@ function Get-LocalPackage {
 }
 
 function Read-Choice {
-    param([string]$Prompt = '请输入选项 [1-4]：')
+    param([string]$Prompt = '请输入选项 [1-5]：')
     while ($true) {
         Write-Host ''
         Write-Host $Prompt -ForegroundColor Cyan -NoNewline
         $input = Read-Host
         if ($null -eq $input) { continue }
         $trimmed = $input.Trim()
-        if ($trimmed -match '^[1-4]$') { return [int]$trimmed }
-        Write-Warn -Stage 'MENU' ('输入无效：“{0}”，只接受 1、2、3、4。' -f $trimmed)
+        if ($trimmed -match '^[1-5]$') { return [int]$trimmed }
+        Write-Warn -Stage 'MENU' ('输入无效：“{0}”，只接受 1、2、3、4、5。' -f $trimmed)
     }
 }
 
@@ -577,6 +578,132 @@ function Invoke-UninstallFlow {
     }
 }
 
+function Invoke-RollbackFlow {
+    param([switch]$Interactive)
+    # 0.5.0 任务 4：把"升级到一半失败/装完想退回去"变成一条命令。
+    $backupRoot = Get-BackupRoot -StateRoot $StateRoot
+    if (-not (Test-Path -LiteralPath $backupRoot)) {
+        Write-Warn -Stage 'ROLLBACK' ('没有找到备份目录：{0}' -f $backupRoot)
+        return $false
+    }
+    $candidates = New-Object System.Collections.Generic.List[object]
+    foreach ($entry in (Get-ChildItem -LiteralPath $backupRoot -Directory -Force | Sort-Object Name -Descending)) {
+        # 备份里可能是 CadMath03.bundle（全局模式）或 <版本>（按版本注册的负载），两者都要认
+        $payloadCopy = Get-ChildItem -LiteralPath $entry.FullName -Directory -Force -ErrorAction SilentlyContinue |
+            Sort-Object @{ Expression = { if ($_.Name -like 'CadMath*.bundle') { 0 } else { 1 } } }, Name -Descending |
+            Select-Object -First 1
+        if ($payloadCopy -eq $null) { continue }
+        $version = $null
+        try { $version = (Get-BundleInfo -Bundle $payloadCopy.FullName).Version } catch { }
+        if (-not $version) {
+            $guess = Join-Path $payloadCopy.FullName 'Contents\Win64\CadMath03.dll'
+            if (-not (Test-Path -LiteralPath $guess)) {
+                $guess = (Get-ChildItem -LiteralPath (Join-Path $payloadCopy.FullName 'Contents') -Directory -ErrorAction SilentlyContinue |
+                    Select-Object -First 1 | ForEach-Object { Join-Path $_.FullName 'CadMath03.dll' })
+            }
+            if ($guess -and (Test-Path -LiteralPath $guess)) {
+                try { $version = (Get-Item -LiteralPath $guess).VersionInfo.FileVersion } catch { }
+            }
+        }
+        if (-not $version) { continue }
+        $candidates.Add([pscustomobject]@{
+            Name    = $entry.Name
+            Path    = $entry.FullName
+            Payload = $payloadCopy.FullName
+            Version = $version
+        })
+    }
+    if ($candidates.Count -eq 0) {
+        Write-Warn -Stage 'ROLLBACK' '备份目录里没有可用的旧版本负载。'
+        return $false
+    }
+
+    $chosen = $candidates[0]
+    if ($Interactive -and $candidates.Count -gt 1) {
+        Write-Host '[可回滚的版本]' -ForegroundColor White
+        $index = 0
+        foreach ($item in $candidates) {
+            $index++
+            Write-Host ('  {0}. {1}（版本 {2}）' -f $index, $item.Name, $(if ($item.Version) { $item.Version } else { '未知' }))
+        }
+        $pick = Read-InstanceSelection -Instances ($candidates.ToArray()) -Prompt '请输入要恢复的序号：'
+        if ($pick.Count -eq 0) { Write-Info -Stage 'ROLLBACK' '用户取消，未修改任何文件。'; return $false }
+        $chosen = $pick[0]
+    }
+
+    Write-Host ''
+    Write-Host '[将执行]' -ForegroundColor White
+    Write-Host ('  - 用备份中的旧版本覆盖当前负载：{0}' -f $chosen.Payload)
+    Write-Host '  - 重新写入注册项与 TRUSTEDPATHS（指向恢复后的负载）'
+    Write-Host '  保留：备份本身（回滚后仍可再回滚）、日志。'
+    if (-not (Confirm-Action -Question '确认回滚？')) {
+        Write-Info -Stage 'ROLLBACK' '用户取消，未修改任何文件。'
+        return $false
+    }
+
+    $current = Read-InstallState -StateRoot $StateRoot
+    $targets = New-Object System.Collections.Generic.List[object]
+    foreach ($instance in @($Scan.Instances)) {
+        foreach ($entry in @($current.instances)) {
+            if ($entry -ne $null -and $entry.instanceId -eq $instance.Id) { $targets.Add($instance) }
+        }
+    }
+    if ($targets.Count -eq 0) {
+        Write-Warn -Stage 'ROLLBACK' '当前没有受管实例，无法回滚注册项。'
+        return $false
+    }
+
+    $payloadRoot = Get-PayloadRoot -StateRoot $StateRoot
+    New-Item -ItemType Directory -Path $payloadRoot -Force | Out-Null
+    $restoreDir = Join-Path $payloadRoot ([string]$chosen.Name + '-restore-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    try {
+        Copy-Item -LiteralPath $chosen.Payload -Destination $restoreDir -Recurse -Force
+        $info = Get-BundleInfo -Bundle $restoreDir
+        Write-Info -Stage 'ROLLBACK' ('备份负载已就位：{0}（版本 {1}）' -f $restoreDir, $info.Version)
+
+        $trusted = @(Get-OwnedDirectories -PayloadDir $restoreDir)
+        $old = @()
+        if ($current.payloadPath) { $old = @(Get-OwnedDirectories -PayloadDir ([string]$current.payloadPath)) }
+        $entries = New-Object System.Collections.Generic.List[object]
+        foreach ($instance in $targets) {
+            $relative = $script:EntryAssembly
+            $hostSpec = Get-HostForSeries -Setup $package.Setup -Series $instance.Series
+            if ($hostSpec -ne $null -and $hostSpec.entry) { $relative = [string]$hostSpec.entry }
+            $loader = Join-Path $restoreDir $relative
+            if (-not (Test-Path -LiteralPath $loader)) {
+                Write-Warn -Stage 'ROLLBACK' ('备份里没有 {0} 需要的宿主：{1}' -f $instance.Label, $relative)
+                continue
+            }
+            Set-InstanceRegistration -Instance $instance -Loader $loader -TrustedDirs $trusted -ReplaceDirs $old | Out-Null
+            Write-Info -Stage 'ROLLBACK' ('已把 {0} 指回旧版本（{1}）' -f $instance.Label, $relative)
+            $entries.Add([pscustomobject]@{
+                instanceId  = $instance.Id
+                adapterId   = $null
+                label       = $instance.Label
+                entry       = $relative
+                loader      = $loader
+                installedAt = (Get-Date -Format 'o')
+            })
+        }
+        if ($entries.Count -eq 0) { throw '没有任何实例被指回旧版本。' }
+        $state = [pscustomobject]@{
+            schemaVersion    = 1
+            mode             = 'registration'
+            installedVersion = $info.Version
+            payloadPath      = $restoreDir
+            bundlePath       = $null
+            bundlePaths      = $null
+            instances        = $entries.ToArray()
+        }
+        Save-InstallState -StateRoot $StateRoot -State $state
+        Write-Info -Stage 'ROLLBACK' ('回滚完成：现在跑的是 {0}' -f $info.Version)
+        return $true
+    } catch {
+        Write-Err -Stage 'ROLLBACK' ('回滚失败：{0}' -f $_.Exception.Message)
+        return $false
+    }
+}
+
 function Show-PendingTransaction {
     param([switch]$Interactive)
     $journal = Read-Journal -StateRoot $StateRoot
@@ -656,6 +783,11 @@ if ($Doctor -or $Json) {
 
 # 非交互路径
 $didAction = $false
+if ($Rollback) {
+    $didAction = $true
+    if (Invoke-RollbackFlow) { Write-Info -Stage 'EXIT' '回滚完成'; exit 0 }
+    Write-Err -Stage 'EXIT' '回滚未完成'; exit 3
+}
 if ($Check) {
     Write-Info -Stage 'EXIT' '仅检测模式结束'
     exit 0
@@ -717,13 +849,15 @@ try {
         Write-Host '  1. 安装插件'
         Write-Host '  2. 检查是否有最新版本，有就安装'
         Write-Host '  3. 卸载该插件'
-        Write-Host '  4. 退出'
+        Write-Host '  4. 回滚到上一个版本（用备份恢复）'
+        Write-Host '  5. 退出'
         $choice = Read-Choice
         switch ($choice) {
             1 { Invoke-InstallFlow -Scan $scan -Package $package; $didAction = $true; $scan = Update-Environment -Package $package }
             2 { Invoke-UpdateFlow -Scan $scan -Package $package; $didAction = $true; $scan = Update-Environment -Package $package }
             3 { Invoke-UninstallFlow -Scan $scan; $didAction = $true; $scan = Update-Environment -Package $package }
-            4 {
+            4 { Invoke-RollbackFlow -Interactive; $didAction = $true; $scan = Update-Environment -Package $package }
+            5 {
                 Write-Info -Stage 'EXIT' '用户选择退出'
                 if ($didAction) {
                     $summary = Get-Summary -Scan $scan

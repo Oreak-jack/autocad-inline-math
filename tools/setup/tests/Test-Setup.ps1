@@ -388,6 +388,22 @@ try {
             $state.installedVersion -eq $setup.releaseVersion -and (Test-Path -LiteralPath $loader) -and
             -not (Test-Path (Get-JournalFile -StateRoot $stateRoot))
     }
+    Check '--Rollback 能把实例指回备份里的旧版本' {
+        # 0.5.0 任务 4：安装 -> 制造一份备份 -> 改注册项 -> -Rollback 恢复
+        $first = Invoke-Cli -Extra @('-Install', 'R25.1\ACAD-9101:804', '-Yes')
+        if ($first.ExitCode -ne 0) { return $false }
+        $payload = (Read-InstallState -StateRoot $stateRoot).payloadPath
+        $backupDir = Join-Path (Get-BackupRoot -StateRoot $stateRoot) '20260101-000000-manual'
+        New-Item -ItemType Directory -Path $backupDir -Force | Out-Null
+        Copy-Item -LiteralPath $payload -Destination (Join-Path $backupDir (Split-Path -Leaf $payload)) -Recurse -Force
+        $key = Get-RegistrationKey -ProductPath $instance25.ProductPath
+        Set-ItemProperty -LiteralPath $key -Name 'LOADER' -Value 'C:\nowhere\CadMath03.dll'
+        $r = Invoke-Cli -Extra @('-Rollback', '-Yes')
+        $state = Read-InstallState -StateRoot $stateRoot
+        $loader = (Get-ItemProperty -LiteralPath $key).LOADER
+        $r.ExitCode -eq 0 -and $r.Output -match '回滚完成' -and (Test-Path -LiteralPath $loader) -and
+            $loader -match 'restore' -and $state.payloadPath -match 'restore'
+    }
     Check '回滚失败时保留事务记录，重启后可恢复' {
         $payload = (Read-InstallState -StateRoot $stateRoot).payloadPath
         $planned = (Read-InstallState -StateRoot $stateRoot).installedVersion
