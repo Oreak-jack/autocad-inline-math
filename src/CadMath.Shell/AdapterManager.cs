@@ -1,4 +1,4 @@
-using System.IO;
+﻿using System.IO;
 using System.Reflection;
 #if NET
 using System.Runtime.Loader;
@@ -60,6 +60,11 @@ internal sealed class AdapterManager : IDisposable
 
     public string? LastError { get; private set; }
 
+    /// <summary>连续失败到第几次才保护性关闭。</summary>
+    public const int FailureLimit = 3;
+
+    private int _failureCount;
+
     public int Replacements => Volatile.Read(ref _replacements);
 
     public bool HasAdapter => _adapter is not null;
@@ -104,6 +109,8 @@ internal sealed class AdapterManager : IDisposable
     public void Enable()
     {
         Enabled = true;
+        Volatile.Write(ref _failureCount, 0);
+        LastError = null;
         _log.Write(LogLevel.Info, "enabled");
     }
 
@@ -113,13 +120,30 @@ internal sealed class AdapterManager : IDisposable
         _log.Write(LogLevel.Info, "disabled");
     }
 
-    /// <summary>适配器自身炸了：保护性关闭，等用户手动 CM3ON。</summary>
+    /// <summary>
+    /// 适配器自身抛异常。0.5.0 起不再"一次就永久关闭"：
+    /// 连续 <see cref="FailureLimit"/> 次才保护性关闭，中间那次只记日志并计数。
+    /// 这样一次瞬时的编辑器状态变化不会把功能关到底，而真的每键必炸也只损失 3 次按键。
+    /// </summary>
     internal void HandleAdapterFailure(Exception exception)
     {
-        Enabled = false;
+        var count = Interlocked.Increment(ref _failureCount);
         LastError = exception.GetType().Name + ": " + exception.Message;
-        _log.Write(LogLevel.Error, "adapter failure, interception disabled: " + exception);
+        _log.Write(LogLevel.Error, $"adapter failure #{count}: {exception}");
+        if (count < FailureLimit) return;
+
+        Enabled = false;
+        _log.Write(LogLevel.Error, $"adapter failed {count} times in a row, interception disabled; CM3ON 可恢复");
     }
+
+    /// <summary>一次成功处理会把连败计数清零。</summary>
+    internal void NoteSuccess()
+    {
+        if (Volatile.Read(ref _failureCount) == 0) return;
+        Volatile.Write(ref _failureCount, 0);
+    }
+
+    public int Failures => Volatile.Read(ref _failureCount);
 
     /// <summary>热路径：只做判定与计数，绝不写文件。</summary>
     internal Conversion Evaluate(SubmitRequest request)
@@ -134,7 +158,7 @@ internal sealed class AdapterManager : IDisposable
 
     public string Describe()
     {
-        var text = $"{ProductInfo.Name} {ProductInfo.Version} 开启={Enabled} 适配器={Active?.Id ?? "-"} 宿主={Host} 替换请求={Replacements} 回显={(Feedback.Enabled ? "开" : "关")} 最后错误={(string.IsNullOrEmpty(LastError) ? "-" : LastError)}";
+        var text = $"{ProductInfo.Name} {ProductInfo.Version} 开启={Enabled} 适配器={Active?.Id ?? "-"} 宿主={Host} 替换请求={Replacements} 回显={(Feedback.Enabled ? "开" : "关")} 连败={Failures} 最后错误={(string.IsNullOrEmpty(LastError) ? "-" : LastError)}";
         if (_rejected.Count > 0) text += DescribeRejections();
         return text + "\n日志：" + LogFile.Path;
     }

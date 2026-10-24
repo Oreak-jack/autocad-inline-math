@@ -1,4 +1,4 @@
-
+﻿
 namespace CadMath.Abstractions;
 
 /// <summary>用户按下回车/空格时，适配器交给宿主的一条记录。</summary>
@@ -27,8 +27,11 @@ public interface IAdapterHost
     /// </summary>
     IUserFeedback Feedback { get; }
 
-    /// <summary>适配器自身出错（通常意味着 API 契约变了）。宿主负责保护性关闭并记日志。</summary>
+    /// <summary>适配器自身出错（通常意味着 API 契约变了）。宿主负责计数，连败到阈值才保护性关闭。</summary>
     void OnFailure(Exception exception);
+
+    /// <summary>一次按键被成功处理（放行/改写/拒绝都算）。宿主用它清零连败计数。</summary>
+    void NoteSuccess();
 }
 
 /// <summary>

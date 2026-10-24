@@ -1,4 +1,4 @@
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.Reflection;
 using System.Threading;
@@ -315,7 +315,11 @@ public abstract class KeystrokeAdapter : ICadAdapter
         var before = textProperty?.GetValue(buffer) as string ?? string.Empty;
         var conversion = _host.Evaluate(new SubmitRequest(_contextKind, _contextCommand, before));
 
-        if (conversion.Decision == Decision.Pass) return;
+        if (conversion.Decision == Decision.Pass)
+        {
+            Safe(() => _host.NoteSuccess());
+            return;
+        }
 
         if (conversion.Decision == Decision.Reject)
         {
@@ -324,6 +328,7 @@ public abstract class KeystrokeAdapter : ICadAdapter
             NoteKeystrokeConsumed(messageId, key);
             _host.Report(LogLevel.Warn, "rejected: " + conversion.Code + " " + conversion.Message + " input=" + before);
             TryFeedback(() => _host.Feedback.OnRejected(before, conversion.Code ?? string.Empty, conversion.Message ?? string.Empty));
+            Safe(() => _host.NoteSuccess());
             System.Media.SystemSounds.Beep.Play();
             return;
         }
@@ -345,6 +350,7 @@ public abstract class KeystrokeAdapter : ICadAdapter
                 "replacement_requested " + before + " => " + conversion.Value + " command=" + _contextCommand +
                 " msg=0x" + messageId.ToString("X"));
             TryFeedback(() => _host.Feedback.OnReplaced(before, conversion.Value));
+            Safe(() => _host.NoteSuccess());
         }
         finally
         {
@@ -358,6 +364,19 @@ public abstract class KeystrokeAdapter : ICadAdapter
     /// 回显是"锦上添花"：宿主没实现、或者实现里抛了（例如编辑器刚好不可用），都绝不能影响
     /// 已经完成的输入改写，所以这里把异常吞掉并只记一条日志。
     /// </summary>
+    /// <summary>热点路径上的可选回调：任何异常都只记一条日志，绝不向上抛。</summary>
+    private void Safe(Action action)
+    {
+        try { action(); }
+        catch (Exception ex) { SafeReport(ex); }
+    }
+
+    private void SafeReport(Exception ex)
+    {
+        try { _host.Report(LogLevel.Warn, "host callback failed: " + ex.GetType().Name + ": " + ex.Message); }
+        catch { }
+    }
+
     private void TryFeedback(Action action)
     {
         try

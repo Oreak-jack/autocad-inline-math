@@ -1,4 +1,4 @@
-using CadMath.Abstractions;
+﻿using CadMath.Abstractions;
 using CadMath.Core;
 
 namespace CadMath.Shell;
@@ -24,4 +24,6 @@ internal sealed class AdapterHost : IAdapterHost
     public IUserFeedback Feedback => _manager.Feedback;
 
     public void OnFailure(Exception exception) => _manager.HandleAdapterFailure(exception);
+
+    public void NoteSuccess() => _manager.NoteSuccess();
 }
