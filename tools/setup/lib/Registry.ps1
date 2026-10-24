@@ -140,7 +140,9 @@ function Set-InstanceRegistration {
     param(
         [Parameter(Mandatory)]$Instance,
         [Parameter(Mandatory)][string]$Loader,
-        [Parameter(Mandatory)][string[]]$TrustedDirs
+        [Parameter(Mandatory)][string[]]$TrustedDirs,
+        # 0.5.0：升级时传旧负载的两条路径，写 TRUSTEDPATHS 时顺手换掉，避免一条条累积。
+        [string[]]$ReplaceDirs = @()
     )
     $appKey = Get-RegistrationKey -ProductPath $Instance.ProductPath
     if (-not (Test-Path -LiteralPath $appKey)) { New-Item -Path $appKey -Force | Out-Null }
@@ -151,7 +153,9 @@ function Set-InstanceRegistration {
     $touched = 0
     foreach ($entry in @(Get-TrustedPathsEntry -ProductPath $Instance.ProductPath)) {
         if (-not (Test-Path -LiteralPath $entry.VariablesKey)) { continue }
-        $merged = Join-TrustedPath -Current $entry.Value -Add $TrustedDirs
+        $current = $entry.Value
+        if ($ReplaceDirs.Count -gt 0) { $current = Remove-TrustedPath -Current $current -Remove $ReplaceDirs }
+        $merged = Join-TrustedPath -Current $current -Add $TrustedDirs
         if ($merged -ne $entry.Value) {
             New-ItemProperty -LiteralPath $entry.VariablesKey -Name 'TRUSTEDPATHS' -Value $merged -PropertyType String -Force | Out-Null
             $touched++

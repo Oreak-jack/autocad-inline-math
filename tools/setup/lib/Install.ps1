@@ -116,6 +116,51 @@ function Copy-BundleToPayload {
     }
 }
 
+function Remove-SupersededPayloads {
+    param([string]$StateRoot, [string]$Keep)
+    # 0.5.0：升级后删掉不再被引用的旧版本负载。只动 payload 下、形如版本号的直接子目录；
+    # 正在用的那一份（-Keep）与任何还带着 .stage- 的暂存目录一律不碰。
+    $payloadRoot = Get-PayloadRoot -StateRoot $StateRoot
+    $result = [pscustomobject]@{ Paths = @(); Bytes = [long]0 }
+    if (-not (Test-Path -LiteralPath $payloadRoot)) { return $result }
+
+    $keepFull = $null
+    if ($Keep) { $keepFull = [IO.Path]::GetFullPath($Keep).TrimEnd('\') }
+
+    $removed = New-Object System.Collections.Generic.List[string]
+    $bytes = [long]0
+    foreach ($dir in (Get-ChildItem -LiteralPath $payloadRoot -Directory -Force)) {
+        $full = [IO.Path]::GetFullPath($dir.FullName).TrimEnd('\')
+        if ($keepFull -and ($full -eq $keepFull)) { continue }
+        if ($dir.Name -notmatch '^\d+\.\d+\.\d+$') { continue }
+        # 还有实例的 LOADER 指向它就不删（例如只重装了某一个版本带）。
+        $stillUsed = $false
+        $stateFile = Get-StateFile -StateRoot $StateRoot
+        if (Test-Path -LiteralPath $stateFile) {
+            $current = Read-InstallState -StateRoot $StateRoot
+            foreach ($instance in @($current.instances)) {
+                if ($instance -eq $null -or -not $instance.loader) { continue }
+                if ([string]$instance.loader -like ($full + '\*')) { $stillUsed = $true }
+            }
+        }
+        if ($stillUsed) { continue }
+
+        try {
+            $size = (Get-ChildItem -LiteralPath $full -Recurse -File -Force -ErrorAction SilentlyContinue |
+                Measure-Object -Property Length -Sum).Sum
+            if (-not $size) { $size = 0 }
+            Remove-Item -LiteralPath $full -Recurse -Force
+            $bytes += [long]$size
+            $removed.Add($dir.Name)
+        } catch {
+            Write-Warn -Stage 'CLEANUP' ('{0} 删除失败：{1}' -f $dir.Name, $_.Exception.Message)
+        }
+    }
+    $result.Paths = $removed.ToArray()
+    $result.Bytes = $bytes
+    return $result
+}
+
 function Get-OwnedDirectories {
     # 一个负载目录里可能有多个宿主（Win64 给 2025/2026，Win64-2024 给 2021–2024，Win64-2020 给 2020），
     # 只要目录存在，就把宿主目录与它的 Adapters 子目录都登记到 TRUSTEDPATHS，卸载时再精确移除。
@@ -290,7 +335,11 @@ function Install-CadMathPackage {
             if (-not (Test-Path -LiteralPath $loader)) {
                 throw ('负载里缺少 {0} 的宿主程序集：{1}' -f $item.Instance.Label, $item.Entry)
             }
-            $registration = Set-InstanceRegistration -Instance $item.Instance -Loader $loader -TrustedDirs $trusted
+            $replace = @()
+            if ($previousPayload -and $previousPayload -ne $payloadFinal) {
+                $replace = @(Get-OwnedDirectories -PayloadDir $previousPayload)
+            }
+            $registration = Set-InstanceRegistration -Instance $item.Instance -Loader $loader -TrustedDirs $trusted -ReplaceDirs $replace
             if (-not (Test-InstanceRegistered -Instance $item.Instance -Loader $loader)) {
                 throw ('注册校验失败：{0}' -f $item.Instance.Label)
             }
@@ -333,6 +382,19 @@ function Install-CadMathPackage {
         Write-Journal -StateRoot $StateRoot -Journal $journal
         Clear-Journal -StateRoot $StateRoot
         Write-Info -Stage 'DONE' ('安装完成：{0}，{1} 个实例' -f $Setup.releaseVersion, $plan.Count)
+
+        # 8. 升级后清理：旧版本负载不再被引用就删掉（0.5.0 任务 3）。
+        # 只在安装成功、注册表与状态都写完之后做；这一步失败不影响本次安装结果。
+        try {
+            $removed = Remove-SupersededPayloads -StateRoot $StateRoot -Keep $payloadFinal
+            if ($removed.Paths.Count -gt 0) {
+                Write-Info -Stage 'CLEANUP' ('已删除旧版本负载：{0}' -f ($removed.Paths -join '；'))
+                Write-Info -Stage 'CLEANUP' ('释放空间 {0:0.0} MB' -f ($removed.Bytes / 1MB))
+            }
+        } catch {
+            Write-Warn -Stage 'CLEANUP' ('旧负载清理失败（不影响本次安装）：{0}' -f $_.Exception.Message)
+        }
+
         return [pscustomobject]@{
             Success  = $true
             Version  = $Setup.releaseVersion
