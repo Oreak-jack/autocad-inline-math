@@ -102,6 +102,13 @@ try {
     New-Item -Path $product23 -Force | Out-Null
     $product25a = Join-Path $regRoot 'R25.0\ACAD-A001:804'
     New-Item -Path $product25a -Force | Out-Null
+    # 再补三个"只有键、没有安装目录"的旧实例，用来验证 2018 / 2017 / 2015-16 三档。
+    $product22 = Join-Path $regRoot 'R22.0\ACAD-B001:804'
+    $product21 = Join-Path $regRoot 'R21.0\ACAD-C001:804'
+    $product20 = Join-Path $regRoot 'R20.1\ACAD-E001:804'
+    New-Item -Path $product22 -Force | Out-Null
+    New-Item -Path $product21 -Force | Out-Null
+    New-Item -Path $product20 -Force | Out-Null
     $machine25 = Join-Path $machineRoot 'R25.1\ACAD-9101:804'
     $machine24 = Join-Path $machineRoot 'R24.3\ACAD-9010:409'
     $machine23 = Join-Path $machineRoot 'R23.1\ACAD-D001:804'
@@ -110,6 +117,15 @@ try {
     New-Item -Path $machine23 -Force | Out-Null
     $machine25a = Join-Path $machineRoot 'R25.0\ACAD-A001:804'
     New-Item -Path $machine25a -Force | Out-Null
+    $machine22 = Join-Path $machineRoot 'R22.0\ACAD-B001:804'
+    $machine21 = Join-Path $machineRoot 'R21.0\ACAD-C001:804'
+    $machine20 = Join-Path $machineRoot 'R20.1\ACAD-E001:804'
+    New-Item -Path $machine22 -Force | Out-Null
+    New-Item -Path $machine21 -Force | Out-Null
+    New-Item -Path $machine20 -Force | Out-Null
+    Set-ItemProperty -Path $machine22 -Name AcadLocation -Value 'C:\Program Files\Autodesk\AutoCAD 2018\'
+    Set-ItemProperty -Path $machine21 -Name AcadLocation -Value 'C:\Program Files\Autodesk\AutoCAD 2017\'
+    Set-ItemProperty -Path $machine20 -Name AcadLocation -Value 'C:\Program Files\Autodesk\AutoCAD 2016\'
     Set-ItemProperty -Path $machine25a -Name AcadLocation -Value 'C:\Program Files\Autodesk\AutoCAD 2025\'
     Set-ItemProperty -Path $machine25 -Name AcadLocation -Value 'D:\AutoCAD 2026\'
     Set-ItemProperty -Path $machine24 -Name AcadLocation -Value 'C:\Program Files\Autodesk\AutoCAD 2024\'
@@ -122,6 +138,9 @@ try {
     $instance25a = @($scan.Instances | Where-Object { $_.Release -eq 'R25.0' })[0]
     $instance24 = @($scan.Instances | Where-Object { $_.Release -eq 'R24.3' })[0]
     $instance23 = @($scan.Instances | Where-Object { $_.Release -eq 'R23.1' })[0]
+    $instance22 = @($scan.Instances | Where-Object { $_.Release -eq 'R22.0' })[0]
+    $instance21 = @($scan.Instances | Where-Object { $_.Release -eq 'R21.0' })[0]
+    $instance20 = @($scan.Instances | Where-Object { $_.Release -eq 'R20.1' })[0]
 
     Write-Host ''
     Write-Host '=== 发行清单' -ForegroundColor Cyan
@@ -164,16 +183,32 @@ try {
         $m = Select-AdapterForInstance -Setup $setup -Instance $instance24 -Architecture 'x64'
         $m.Status -eq 'matched' -and $m.Adapter.id -eq 'legacy-r24'
     }
-    Check '宿主按 CAD 系列选择入口 DLL（2026→Win64，2025→Win64-2025，2021–2024→Win64-2024，2020→Win64-2020）' {
+    Check '宿主按 CAD 系列选择入口 DLL（七档：2026→Win64，2025→Win64-2025，2021–2024→Win64-2024，2020→Win64-2020，2018→Win64-2018，2017→Win64-2017，2015–2016→Win64-2015）' {
         $h26 = Get-HostForSeries -Setup $setup -Series 'R25.1'
         $h25 = Get-HostForSeries -Setup $setup -Series '25.0'
         $h24 = Get-HostForSeries -Setup $setup -Series '24.3'
         $h23 = Get-HostForSeries -Setup $setup -Series 'R23.1'
+        $h22 = Get-HostForSeries -Setup $setup -Series 'R22.0'
+        $h21 = Get-HostForSeries -Setup $setup -Series 'R21.0'
+        $h20 = Get-HostForSeries -Setup $setup -Series 'R20.1'
+        $h20a = Get-HostForSeries -Setup $setup -Series 'R20.0'
         $h26.entry -eq 'Contents/Win64/CadMath03.dll' -and
             $h25.entry -eq 'Contents/Win64-2025/CadMath03.dll' -and
             $h24.entry -eq 'Contents/Win64-2024/CadMath03.dll' -and
             $h23.entry -eq 'Contents/Win64-2020/CadMath03.dll' -and
-            $null -eq (Get-HostForSeries -Setup $setup -Series 'R23.0')
+            $h22.entry -eq 'Contents/Win64-2018/CadMath03.dll' -and
+            $h21.entry -eq 'Contents/Win64-2017/CadMath03.dll' -and
+            $h20.entry -eq 'Contents/Win64-2015/CadMath03.dll' -and
+            $h20a.entry -eq 'Contents/Win64-2015/CadMath03.dll' -and
+            $null -eq (Get-HostForSeries -Setup $setup -Series 'R19.1')
+    }
+    Check '2018 / 2017 / 2015–2016 三个实例各自匹配到自己的适配器' {
+        $m22 = Select-AdapterForInstance -Setup $setup -Instance $instance22 -Architecture 'x64'
+        $m21 = Select-AdapterForInstance -Setup $setup -Instance $instance21 -Architecture 'x64'
+        $m20 = Select-AdapterForInstance -Setup $setup -Instance $instance20 -Architecture 'x64'
+        $m22.Status -eq 'matched' -and $m22.Adapter.id -eq 'legacy-r22' -and
+            $m21.Status -eq 'matched' -and $m21.Adapter.id -eq 'legacy-r21' -and
+            $m20.Status -eq 'matched' -and $m20.Adapter.id -eq 'legacy-r20'
     }
     Check '清单拒绝重复的宿主 series' {
         $bad = Join-Path $root 'dup-host.json'
@@ -301,7 +336,7 @@ try {
         $end = $r.Output.LastIndexOf('}')
         if ($start -lt 0 -or $end -le $start) { return $false }
         $parsed = $r.Output.Substring($start, $end - $start + 1) | ConvertFrom-Json
-        $r.ExitCode -eq 0 -and @($parsed.CadInstances).Count -eq 4
+        $r.ExitCode -eq 0 -and @($parsed.CadInstances).Count -eq 7
     }
     Check '安装到 2026 实例成功，注册项与负载就位' {
         $r = Invoke-Cli -Extra @('-Install', 'R25.1\ACAD-9101:804', '-Yes')

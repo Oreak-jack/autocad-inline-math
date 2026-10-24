@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net48</TargetFramework>
+    <RootNamespace>CadMath.Adapter.Legacy2015</RootNamespace>
+    <AssemblyName>CadMath.Adapter.Legacy2015</AssemblyName>
+    <Description>AutoCAD 2015–2016（R20.0–R20.1）输入拦截适配器：同一份源码，用 2015 时代的 SDK（20.1.0）编译。</Description>
+    <UseWPF>true</UseWPF>
+    <Platforms>x64</Platforms>
+    <PlatformTarget>x64</PlatformTarget>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AutoGenerateBindingRedirects>false</AutoGenerateBindingRedirects>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CadMath.Abstractions\CadMath.Abstractions.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Compile Include="..\CadMath.Adapter.Shared\**\*.cs" LinkBase="Shared" />
+  </ItemGroup>
+
+  <!-- 官方 NuGet 引用程序集：只编译、不复制（ExcludeAssets=runtime）。
+       编译锚取该 band 内最旧的 SDK，宿主自带的同版本程序集会在运行期顶替。
+       注意 Model / Core 与 AutoCAD.NET 的版本号不一定同步（例如 25.0.x）。 -->
+  <ItemGroup>
+    <PackageReference Include="AutoCAD.NET" Version="20.1.0" ExcludeAssets="runtime" PrivateAssets="none" />
+    <PackageReference Include="AutoCAD.NET.Model" Version="20.1.0" ExcludeAssets="runtime" PrivateAssets="none" />
+    <PackageReference Include="AutoCAD.NET.Core" Version="20.1.0" ExcludeAssets="runtime" PrivateAssets="none" />
+  </ItemGroup>
+
+</Project>

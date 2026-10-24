@@ -52,6 +52,45 @@
       "runtime": "net48",
       "host": "win64-2020",
       "acMgdVersion": "23.1.0.0"
+    },
+{
+      "id": "legacy-r22",
+      "displayName": "旧版适配器（AutoCAD 2018）",
+      "assembly": "Adapters/CadMath.Adapter.Legacy2018.dll",
+      "type": "CadMath.Adapter.Legacy2018.Legacy2018Adapter",
+      "series": [ "R22.0" ],
+      "priority": 100,
+      "verified": false,
+      "status": "built",
+      "runtime": "net48",
+      "host": "win64-2018",
+      "acMgdVersion": "22.0.0.0"
+    },
+    {
+      "id": "legacy-r21",
+      "displayName": "旧版适配器（AutoCAD 2017）",
+      "assembly": "Adapters/CadMath.Adapter.Legacy2017.dll",
+      "type": "CadMath.Adapter.Legacy2017.Legacy2017Adapter",
+      "series": [ "R21.0" ],
+      "priority": 100,
+      "verified": false,
+      "status": "built",
+      "runtime": "net48",
+      "host": "win64-2017",
+      "acMgdVersion": "21.0.0.0"
+    },
+    {
+      "id": "legacy-r20",
+      "displayName": "旧版适配器（AutoCAD 2015–2016）",
+      "assembly": "Adapters/CadMath.Adapter.Legacy2015.dll",
+      "type": "CadMath.Adapter.Legacy2015.Legacy2015Adapter",
+      "series": [ "R20.0", "R20.1" ],
+      "priority": 100,
+      "verified": false,
+      "status": "built",
+      "runtime": "net48",
+      "host": "win64-2015",
+      "acMgdVersion": "20.1.0.0"
     }
   ]
 }

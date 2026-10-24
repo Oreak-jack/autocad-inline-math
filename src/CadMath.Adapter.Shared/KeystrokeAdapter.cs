@@ -253,10 +253,24 @@ public abstract class KeystrokeAdapter : ICadAdapter
         var focused = Keyboard.FocusedElement;
         if (focused?.GetType().FullName == "Autodesk.AutoCAD.ViewModel.CommandLine.CommandLineTextBox") return true;
         if (focused is System.Windows.Controls.TextBox) return false;
+        return AllowedFocusByWindow(document);
+    }
 
+    /// <summary>
+    /// 老版本（2015–2020）上 WPF 焦点类型可能拿不到，退回窗口类/子窗口判定。
+    /// 类名白名单与 CADAutoIME 的 `_englishOnlyClasses` 同源：命令行、自动完成弹窗、动态输入框、工具提示。
+    /// </summary>
+    private static bool AllowedFocusByWindow(Document document)
+    {
         var focus = GetFocus();
+        if (focus == IntPtr.Zero) return false;
+
         var window = document.Window.Handle;
-        return focus != IntPtr.Zero && (focus == window || IsChild(window, focus));
+        if (focus == window || IsChild(window, focus)) return true;
+
+        var className = GetClassName(focus);
+        if (className is null) return false;
+        return className is "acautocomp" or "accmdlineui" or "acdyninput" or "dyninput" or "#32768" or "tooltip_class32";
     }
 
     [DllImport("user32.dll")]
@@ -265,6 +279,18 @@ public abstract class KeystrokeAdapter : ICadAdapter
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool IsChild(IntPtr parent, IntPtr child);
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr hWnd, System.Text.StringBuilder name, int maxCount);
+
+    private static string? GetClassName(IntPtr handle)
+    {
+        var buffer = new System.Text.StringBuilder(256);
+        var length = GetClassName(handle, buffer, buffer.Capacity);
+        if (length <= 0) return null;
+        var text = buffer.ToString(0, length);
+        return text.Length == 0 ? null : text;
+    }
 
     /// <summary>单个文档的提示事件订阅。</summary>
     private sealed class PromptHooks : IDisposable

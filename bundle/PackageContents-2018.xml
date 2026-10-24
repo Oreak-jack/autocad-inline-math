@@ -1,0 +1,9 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<ApplicationPackage SchemaVersion="1.0" AutodeskProduct="AutoCAD" Name="CadMath03-2018" AppVersion="__CADMATH_VERSION__" Description="Arithmetic in native bottom command line (AutoCAD 22.0)" Author="CadMath" ProductCode="{5D3B8C21-7E46-4F90-A1C2-8E5F3B0D9A44}" UpgradeCode="{0937D725-1309-48F0-A258-BC54916D174A}">
+ <CompanyDetails Name="CadMath" />
+ <!-- 2018（R22.0）：.NET Framework 4.6 宿主，编译基准 22.0.0。与其它代的 bundle 分开，一个 bundle 只装一代 CLR。 -->
+ <Components>
+  <RuntimeRequirements OS="Win64" Platform="AutoCAD" SeriesMin="R22.0" SeriesMax="R22.0" />
+  <ComponentEntry AppName="CadMath03-2018" AppType=".Net" Version="__CADMATH_VERSION__" ModuleName="./Contents/Win64-2018/CadMath03.dll" LoadOnAutoCADStartup="True" />
+ </Components>
+</ApplicationPackage>

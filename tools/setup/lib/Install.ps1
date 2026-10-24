@@ -3,7 +3,7 @@ Set-StrictMode -Version 2
 
 # ApplicationPlugins 全局模式下会部署的 bundle 名字（顺序即部署顺序）。
 # 每份 bundle 只承载一个 CLR 代 / 一个 SDK 编译锚，见 docs/VERSION-MATRIX.md。
-$script:CadMathBundleNames = @('CadMath03.bundle', 'CadMath03-2025.bundle', 'CadMath03-2024.bundle', 'CadMath03-2020.bundle')
+$script:CadMathBundleNames = @('CadMath03.bundle', 'CadMath03-2025.bundle', 'CadMath03-2024.bundle', 'CadMath03-2020.bundle', 'CadMath03-2018.bundle', 'CadMath03-2017.bundle', 'CadMath03-2015.bundle')
 
 function Get-StateFile { param([string]$StateRoot) return (Join-Path $StateRoot 'state.json') }
 function Get-JournalFile { param([string]$StateRoot) return (Join-Path $StateRoot 'pending.json') }
@@ -527,8 +527,9 @@ function Uninstall-CadMathInstances {
 # 注册表零改动，跟 0.3.x 的老做法完全一致。
 
 function Get-GlobalBundlePaths {
-    # 全局模式可能装四份：CadMath03.bundle（2026）、CadMath03-2025.bundle（2025）、
-    # CadMath03-2024.bundle（2021–2024）与 CadMath03-2020.bundle（2020）。四者互不干扰。
+    # 全局模式可能装七份：CadMath03.bundle（2026）、CadMath03-2025.bundle（2025）、
+    # CadMath03-2024.bundle（2021–2024）、CadMath03-2020.bundle（2020）、CadMath03-2018.bundle（2018）、
+# CadMath03-2017.bundle（2017）与 CadMath03-2015.bundle（2015–2016）。七者互不干扰。
     param([string]$AppsRoot)
     $root = $AppsRoot
     if ([string]::IsNullOrWhiteSpace($root)) { $root = Get-ApplicationsRoot }

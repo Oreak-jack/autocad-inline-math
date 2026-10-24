@@ -96,7 +96,20 @@ foreach ($hostEntry in @($setup.hosts)) {
     }
     $actual = Get-AssemblyReference -Path $dll -Name 'acmgd'
     $checked++
-    Write-Host ('  [..]   宿主 {0,-28} acmgd={1}' -f $series, $actual)
+    $expectedHost = $null
+    foreach ($adapter in @($setup.adapters)) {
+        if ((@($adapter.path) -join ',') -and ([string]$adapter.path).StartsWith(([string]$hostEntry.entry).Substring(0, ([string]$hostEntry.entry).LastIndexOf('/')), [StringComparison]::OrdinalIgnoreCase)) {
+            $expectedHost = [string]$adapter.acMgdVersion
+            break
+        }
+    }
+    if (-not $actual) {
+        $failures.Add(('宿主 {0}：读不到 acmgd 引用版本' -f $series))
+    } elseif ($expectedHost -and $actual -ne $expectedHost) {
+        $failures.Add(('宿主 {0}：acmgd={1}，但该宿主下的适配器声明 {2}' -f $series, $actual, $expectedHost))
+    } else {
+        Write-Host ('  [OK]   宿主 {0,-28} acmgd={1}' -f $series, $actual)
+    }
 }
 
 Write-Host ''

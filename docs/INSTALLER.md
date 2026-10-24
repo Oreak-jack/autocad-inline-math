@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿# 命令行安装器（`CadMath-Setup`）
+# 命令行安装器（`CadMath-Setup`）
 
 0.4.1 起，安装、更新、卸载由一个纯命令行工具完成：`tools/setup/CadMath-Setup.ps1`，入口是 `CadMath-Setup.cmd`。
 它不写图形界面、启动时**不联网**（只有菜单 2 会请求 GitHub），只改当前用户的 `HKCU` 与 `%LOCALAPPDATA%`，不需要管理员权限。
@@ -224,7 +224,7 @@ CadMath-Setup.ps1 -Install <实例> -FromBundle D:\pkg\CadMath03.bundle -Yes
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\tests\Test-Setup.ps1
-# 通过 38 项，失败 0 项
+# 通过 39 项，失败 0 项
 ```
 
 测试用临时 `-StateRoot` 与假注册表根（`HKCU:\Software\CadMathSetupTest\<guid>`），不会动真实安装；覆盖清单校验、适配器匹配的每个拒绝原因、zip 越界、安装/修复/卸载、`TRUSTEDPATHS` 合并与还原、事务回滚、崩溃后恢复、版本比较、两种安装方式（按版本注册与 ApplicationPlugins 全局）、CAD 运行时拒绝安装，以及启动批处理的行尾检查。
@@ -240,12 +240,15 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\tests\Test-Setup
 而是在同一个包里放多代宿主，让安装器按实例的 CAD 系列选入口：
 
 ```
-CadMath03.bundle/Contents/Win64/        .NET 8              ← 2025 / 2026（编译基准 25.1）
-CadMath03.bundle/Contents/Win64-2025/   .NET 8             ← 2025（编译基准 25.0.1）
+CadMath03.bundle/Contents/Win64/        .NET 8              ← 2026（编译基准 25.1）
+CadMath03.bundle/Contents/Win64-2025/   .NET 8              ← 2025（编译基准 25.0.1）
 CadMath03.bundle/Contents/Win64-2024/   .NET Framework 4.8  ← 2021 ~ 2024（编译基准 24.0）
 CadMath03.bundle/Contents/Win64-2020/   .NET Framework 4.8  ← 2020（编译基准 23.1）
-CadMath03-2024.bundle/                  2021–2024 专用（ApplicationPlugins 全局安装用）
-CadMath03-2020.bundle/                  2020 专用（同上）
+CadMath03.bundle/Contents/Win64-2018/   .NET Framework 4.8  ← 2018（编译基准 22.0）
+CadMath03.bundle/Contents/Win64-2017/   .NET Framework 4.8  ← 2017（编译基准 21.0.2）
+CadMath03.bundle/Contents/Win64-2015/   .NET Framework 4.8  ← 2015 ~ 2016（编译基准 20.1）
+CadMath03-2025.bundle / -2024 / -2020 / -2018 / -2017 / -2015
+                                        各代专用（ApplicationPlugins 全局安装用，可同时存在）
 ```
 
 `setup.json` 里的 `hosts[]` 描述这个映射：
@@ -259,13 +262,19 @@ CadMath03-2020.bundle/                  2020 专用（同上）
   { "series": ["R24.0", "R24.1", "R24.2", "R24.3"], "runtime": "net48",
     "entry": "Contents/Win64-2024/CadMath03.dll", "bundle": "CadMath03-2024.bundle" },
   { "series": ["R23.1"], "runtime": "net48",
-    "entry": "Contents/Win64-2020/CadMath03.dll", "bundle": "CadMath03-2020.bundle" }
+    "entry": "Contents/Win64-2020/CadMath03.dll", "bundle": "CadMath03-2020.bundle" },
+  { "series": ["R22.0"], "runtime": "net48",
+    "entry": "Contents/Win64-2018/CadMath03.dll", "bundle": "CadMath03-2018.bundle" },
+  { "series": ["R21.0"], "runtime": "net48",
+    "entry": "Contents/Win64-2017/CadMath03.dll", "bundle": "CadMath03-2017.bundle" },
+  { "series": ["R20.0", "R20.1"], "runtime": "net48",
+    "entry": "Contents/Win64-2015/CadMath03.dll", "bundle": "CadMath03-2015.bundle" }
 ]
 ```
 
 安装时对每个实例做两件事：
 
-1. 按 `adapters[].cadSeries` 选适配器（2021–2024 只有 `legacy-r24` 能匹配；2025 只有 `modern-r25`；2026 只有 `modern-r26`；2020 只有 `legacy-r23`）；
+1. 按 `adapters[].cadSeries` 选适配器（2026 只有 `modern-r26`；2025 只有 `modern-r25`；2021–2024 只有 `legacy-r24`；2018/2017/2015–2016 分别是 `legacy-r22`/`legacy-r21`/`legacy-r20`；2020 只有 `legacy-r23`）；
 2. 按实例的系列从 `hosts[]` 选入口 DLL，注册的 `LOADER` 指向该入口。
 
 **找不到对应宿主就报错停止**（`发行包没有为 R24.3 提供宿主。`），绝不回落到 `Win64` —— 那会把

@@ -1,11 +1,11 @@
-﻿﻿﻿﻿﻿# AutoCAD Inline Math
+# AutoCAD Inline Math
 
 [![tests](https://github.com/Oreak-jack/autocad-inline-math/actions/workflows/tests.yml/badge.svg)](https://github.com/Oreak-jack/autocad-inline-math/actions/workflows/tests.yml)
 
 在 AutoCAD 命令行里直接写算式：`100-30` 回车就是 `70`，`@100-30,0` 就是相对坐标 `@70,0`。
 支持长度、角度、坐标等所有"提示输入"的场景，不需要记命令、不需要开计算器、不跳出 CAD。
 
-当前版本 **0.4.10**，支持 AutoCAD 2021 ~ 2026（R24.0 ~ R24.3 / R25.0 / R25.1；2024 / 2025 / 2026 已真机验证，2021–2023 与 2024 共用同一份 4.8 宿主）；AutoCAD 2020（R23.1）仍是**实验性支持**（已编译、安装流程已验证，待真机确认）。用命令行安装器 `CadMath-Setup.cmd` 安装、更新、卸载，见 [docs/INSTALLER.md](docs/INSTALLER.md)。
+当前版本 **0.4.11**，支持 AutoCAD 2015 ~ 2026（R20.0 ~ R25.1，共七个版本带；2024 / 2026 已真机验证）。AutoCAD 2020（R23.1）仍是**实验性支持**（已编译、安装流程已验证，待真机确认）。用命令行安装器 `CadMath-Setup.cmd` 安装、更新、卸载，见 [docs/INSTALLER.md](docs/INSTALLER.md)。
 
 ---
 
@@ -13,9 +13,9 @@
 
 0.3.3 是一个 155 行的 `Plugin.cs` 同时兼任程序集入口、命令、键盘拦截、状态机、日志和焦点探测，外加手工打包脚本和一个 470 行、只认全局 `ApplicationPlugins` 的 PowerShell 安装器。能用，但改一处要读全部。
 
-0.4.x 把同样的功能按职责拆开。0.4.0 只做拆分、拿掉安装器；0.4.1 把安装器以**命令行工具 + 按版本注册**的形式接回来；0.4.2 让一套发行包同时容纳两代 CLR 宿主（.NET 8 给 2025/2026，.NET Framework 4.8 给 2024）；0.4.3 把 2024 适配器从 `planned` 提升为 `host-tested`，正式包随之开放 2024；0.4.4 又加了一代 4.8 宿主（编译基准 23.1）给 2020，先以实验状态发布；0.4.5 修掉了方向输入（`<-30`、`@<45`）被误判成坏表达式、以及拒绝时连回车一起吞掉的问题；0.4.6 修掉了"检查更新"在 0.4.5 上必然失败的 `zip` 属性错误（旧清单格式兼容问题）；0.4.7 让菜单 2 把每一步都打出来（连接、版本、下载进度、解压校验、替换注册），不再有一段看起来像卡死的静默期；0.4.8 让安装器的横幅与日志版本号取自同包的 `setup.json`，不再显示编译期常量（0.4.7 的包里还印着 v0.4.5）；0.4.9 修掉了从浏览器下载、解压后安装时 dll 带"来自网络"标记、导致 AutoCAD 2024 拒绝加载（0x80131515）的问题——安装器改为在复制进负载时抹掉该标记；0.4.10 把 2025 从 2026 的宿主里拆出来（`modern-r25` 改用 2025 的 SDK 编译），并把 2021–2024 的编译基准从 24.3 换成 24.0——按 [docs/VERSION-MATRIX.md](docs/VERSION-MATRIX.md) 的"编译锚取 band 内最旧"规则，这样每个 band 只编一份、只需测最新一个版本：
+0.4.x 把同样的功能按职责拆开。0.4.0 只做拆分、拿掉安装器；0.4.1 把安装器以**命令行工具 + 按版本注册**的形式接回来；0.4.2 让一套发行包同时容纳两代 CLR 宿主（.NET 8 给 2025/2026，.NET Framework 4.8 给 2024）；0.4.3 把 2024 适配器从 `planned` 提升为 `host-tested`，正式包随之开放 2024；0.4.4 又加了一代 4.8 宿主（编译基准 23.1）给 2020，先以实验状态发布；0.4.5 修掉了方向输入（`<-30`、`@<45`）被误判成坏表达式、以及拒绝时连回车一起吞掉的问题；0.4.6 修掉了"检查更新"在 0.4.5 上必然失败的 `zip` 属性错误（旧清单格式兼容问题）；0.4.7 让菜单 2 把每一步都打出来（连接、版本、下载进度、解压校验、替换注册），不再有一段看起来像卡死的静默期；0.4.8 让安装器的横幅与日志版本号取自同包的 `setup.json`，不再显示编译期常量（0.4.7 的包里还印着 v0.4.5）；0.4.9 修掉了从浏览器下载、解压后安装时 dll 带"来自网络"标记、导致 AutoCAD 2024 拒绝加载（0x80131515）的问题——安装器改为在复制进负载时抹掉该标记；0.4.10 把 2025 从 2026 的宿主里拆出来（`modern-r25` 改用 2025 的 SDK 编译），并把 2021–2024 的编译基准从 24.3 换成 24.0；0.4.11 顺着同一条规则补齐 2018（`legacy-r22`）、2017（`legacy-r21`）、2015–2016（`legacy-r20`）三个 band，覆盖范围下探到 2015，焦点判定同时加了窗口类名兜底——按 [docs/VERSION-MATRIX.md](docs/VERSION-MATRIX.md) 的"编译锚取 band 内最旧"规则，这样每个 band 只编一份、只需测最新一个版本：
 
-| | 0.3.3 | 0.4.10 |
+| | 0.3.3 | 0.4.11 |
 | --- | --- | --- |
 | 计算与判定 | `Expression.cs` + `InputPolicy.cs` 被测试工程直接编译 | 独立的 `CadMath.Core` / `CadMath.Abstractions` 程序集 |
 | 键盘拦截 | `Plugin.cs` 里所有东西混在一起 | `CadMath.Adapter.Modern`（.NET 8）+ `CadMath.Adapter.Legacy2024` + `CadMath.Adapter.Legacy2020`（后两者 .NET Framework 4.8），共用 `KeystrokeAdapter` |
@@ -32,7 +32,7 @@
 
 ```
 CadMath.sln
-Directory.Build.props          版本号的唯一来源（0.4.10）
+Directory.Build.props          版本号的唯一来源（0.4.11）
 adapters/adapters.json         适配器清单（随包分发，运行时选择用）
 bundle/PackageContents.xml     包描述模板，打包时注入版本
 build/build.ps1                一条命令产出 bundle + zip + setup.json + SHA256SUMS.txt
@@ -43,7 +43,7 @@ tools/setup/                   命令行安装器（PowerShell 5.1）
   CadMath-Setup.cmd            入口
   CadMath-Setup.ps1            菜单与流程
   lib/                         扫描、清单、注册表、安装/回滚、发行版访问
-  tests/Test-Setup.ps1         安装器自动化测试（38 项）
+  tests/Test-Setup.ps1         安装器自动化测试（39 项）
 src/
   CadMath.Abstractions/        契约层：PromptKind、Decision/Conversion、ICadAdapter、清单模型、HostSeries、选择算法
   CadMath.Core/                纯计算：表达式求值、坐标转换、输入判定（不引用任何 AutoCAD 程序集）
@@ -89,7 +89,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\CadMath-Setup.ps
 
 ### AutoCAD 2024 / 2020
 
-2021–2024 与 2020 用的都是 **.NET Framework 4.8**，与 2025/2026 的 .NET 8 不兼容；而 2025 与 2026 虽然同为 .NET 8，官方却只担保"用旧 SDK 编的能在新版本上跑"。所以包里带了四份宿主：
+2021–2024 与 2020 用的都是 **.NET Framework 4.8**，与 2025/2026 的 .NET 8 不兼容；而 2025 与 2026 虽然同为 .NET 8，官方却只担保"用旧 SDK 编的能在新版本上跑"。所以包里带了七份宿主（每份都是照着"编译锚取 band 内最旧 SDK"编的）：
 
 | 宿主目录 | 覆盖 | CLR | 编译基准 | 适配器 |
 |---|---|---|---|---|
@@ -97,17 +97,21 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\CadMath-Setup.ps
 | `Contents/Win64-2025` | 2025（R25.0） | .NET 8 | `25.0.1` | `modern-r25` |
 | `Contents/Win64-2024` | 2021–2024（R24.0 ~ R24.3） | 4.8 | `24.0.0` | `legacy-r24` |
 | `Contents/Win64-2020` | 2020（R23.1） | 4.8 | `23.1.0` | `legacy-r23` |
+| `Contents/Win64-2018` | 2018（R22.0） | 4.8 | `22.0.0` | `legacy-r22` |
+| `Contents/Win64-2017` | 2017（R21.0） | 4.8 | `21.0.2` | `legacy-r21` |
+| `Contents/Win64-2015` | 2015–2016（R20.0 / R20.1） | 4.8 | `20.1.0` | `legacy-r20` |
 
-安装器按检测到的实例系列选择对应入口，四个版本可以同时装、互不影响。
+安装器按检测到的实例系列选择对应入口，多个版本可以同时装、互不影响。更早的 2007–2014（R17–R19）
+做不了：`CadMath.Core` 与 `CadMath.Abstractions` 是 `netstandard2.0`，运行下限是 **.NET Framework 4.6.1**。
 
 2021–2024 的适配器（`legacy-r24`）状态是 `host-tested`，正式包直接支持：在 2024 里装出来的
-`LOADER` 指向 `...\payload\0.4.10\Contents\Win64-2024\CadMath03.dll`。它刻意用 **2021 的 SDK**（`24.0.0`）
+`LOADER` 指向 `...\payload\0.4.11\Contents\Win64-2024\CadMath03.dll`。它刻意用 **2021 的 SDK**（`24.0.0`）
 编译——只依赖 2021 就有的 API，2022/2023/2024 运行时由 AutoCAD 解析成它自己更新的那一份。
 
-2020 的适配器（`legacy-r23`）在 0.4.10 里状态仍是 `planned`（**实验性**，只做了编译与安装流程验证，
+2020 的适配器（`legacy-r23`）在 0.4.11 里状态仍是 `planned`（**实验性**，只做了编译与安装流程验证，
 还没有人在真实 AutoCAD 2020 上跑过）。给 2020 机器测试请用实验包 `build\build.ps1 -Experimental`
-产出的 `CadMath-InlineMath-0.4.10-experimental.zip`：它把这个适配器临时提升为 `built`，装出来的
-`LOADER` 指向 `...\payload\0.4.10\Contents\Win64-2020\CadMath03.dll`。验证通过后把
+产出的 `CadMath-InlineMath-0.4.11-experimental.zip`：它把这个适配器临时提升为 `built`，装出来的
+`LOADER` 指向 `...\payload\0.4.11\Contents\Win64-2020\CadMath03.dll`。验证通过后把
 `adapters/adapters.json` 里 `legacy-r23` 的 `status` 改成 `host-tested` 再发正式版。
 
 想确认当前这台机器上装的是哪一代，在对应版本的 AutoCAD 命令行里跑：
@@ -126,7 +130,7 @@ CM3PROBE
 装好后 AutoCAD 命令行会出现：
 
 ```
-CadMath 0.4.10 底部命令栏计算已启用。关闭：CM3OFF；状态：CM3STATUS。
+CadMath 0.4.11 底部命令栏计算已启用。关闭：CM3OFF；状态：CM3STATUS。
 ```
 
 ---
@@ -236,13 +240,13 @@ dist/CadMath03-2024.bundle/           2021 ~ 2024 专用包（同上，Series R2
 dist/CadMath03-2020.bundle/           2020 专用包（同上，Series R23.1）
 dist/setup.json                       发行清单：版本、hosts（系列→入口 DLL）、逐文件 SHA-256、适配器状态
 dist/tools/setup/                     安装器（随 zip 分发）
-dist/CadMath-InlineMath-0.4.10.zip    正式包（-NoZip 可跳过）：四个 bundle + 安装器 + setup.json
-dist/experimental/CadMath-InlineMath-0.4.10-experimental.zip
+dist/CadMath-InlineMath-0.4.11.zip    正式包（-NoZip 可跳过）：七个 bundle + 安装器 + setup.json
+dist/experimental/CadMath-InlineMath-0.4.11-experimental.zip
                                       实验包：把 planned 适配器临时提为 built（给 2020 等未验证版本试用）
 dist/SHA256SUMS.txt                   zip 的 SHA-256（便于人工核对）
 ```
 
-版本号只写在 `Directory.Build.props`（`<Version>0.4.10</Version>`），程序和 `PackageContents.xml` 都从那里取；zip 名与 `setup.json` 里的版本也来自同一处。
+版本号只写在 `Directory.Build.props`（`<Version>0.4.11</Version>`），程序和 `PackageContents.xml` 都从那里取；zip 名与 `setup.json` 里的版本也来自同一处。
 
 两个本机会踩的坑，脚本事先规避了：
 
@@ -268,11 +272,11 @@ dotnet run --project tests\CadMath.Tests -c Release
 测试工程零 NuGet 依赖，直接跑在 `net8.0` 上，CI 不需要 Windows 或 AutoCAD。
 真实 CAD 里的行为（拦截、改写、几何落地）不在自动化范围内，靠人工冒烟和 `%TEMP%\CadMath03.log` 核对。
 
-安装器另有 38 项自动化测试（不会动真实安装：临时状态目录 + 假注册表根）：
+安装器另有 39 项自动化测试（不会动真实安装：临时状态目录 + 假注册表根）：
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\tests\Test-Setup.ps1
-# 通过 38 项，失败 0 项
+# 通过 39 项，失败 0 项
 ```
 
 ---
@@ -318,7 +322,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\tests\Test-Setup
 ## 日志与诊断
 
 - 路径：`%TEMP%\CadMath03.log`（超过 1 MB 停止写入）。
-- 关键行：`shell 0.4.10 start; host=R25.1`、`adapter modern-r26 active`、`replacement_requested 100-30 => 70 command=LINE msg=0x100`、`adapter failure, interception disabled`。
+- 关键行：`shell 0.4.11 start; host=R25.1`、`adapter modern-r26 active`、`replacement_requested 100-30 => 70 command=LINE msg=0x100`、`adapter failure, interception disabled`。
 - `CM3STATUS` 会输出开关状态、活动适配器、替换次数、最后一次错误、日志路径，以及被排除的适配器及原因。
 - 想在没有 CAD 的环境里验证探测逻辑，可设 `CADMATH_HOST_SERIES=R25.1`。
 - 在 2024 上排查问题先跑 `CM3PROBE`，它会打印宿主 release、acmgd 版本、适配器、绑定解析结果与焦点类型。
@@ -329,7 +333,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\tests\Test-Setup
 
 - 只支持底部命令行输入，不支持浮动命令行面板与对话框。
 - 适配器抛异常时会**保护性关闭**拦截（fail closed），需手动 `CM3ON`；这样绝不会把错误输入塞进图形。
-- 2024 / 2026 已真机验证；2025 在 0.4.10 里改用 2025 的 SDK（`25.0.1`）单独编译，尚未有人实测；2021–2023 与 2024 共用同一份 `24.0.0` 编出来的宿主（按官方兼容表应当可用，但没有逐一实跑）；2020 仍是实验性支持（已编译、安装流程已验证，待真机确认）。
+- 2024 / 2026 已真机验证；2025 用 2025 的 SDK（`25.0.1`）单独编译且尚未实测；2021–2023 与 2024 共用 `24.0.0` 编的宿主，2018 / 2017 / 2015–2016 各一份（`22.0.0` / `21.0.2` / `20.1.0`），都只做了编译、核对锚与安装流程验证，没有逐一实跑；2020 仍是实验性支持（待真机确认）。
 - 安装器只认 `%LOCALAPPDATA%` 下自己的负载与 `HKCU` 注册；手工放进 `ApplicationPlugins` 的旧式安装会被识别为"旧式"，需要迁移一次才能按版本独立管理。
 - 更新只走 GitHub Releases，网络不可用时安装与卸载仍然可用。
 
