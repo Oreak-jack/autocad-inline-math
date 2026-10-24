@@ -228,6 +228,7 @@ foreach ($adapter in @($allAdapters.adapters)) {
         runtime      = [string]$adapter.runtime
         architecture = 'x64'
         status       = $status
+        acMgdVersion = [string]$adapter.acMgdVersion
         evidence     = @()
         limitations  = @()
     }

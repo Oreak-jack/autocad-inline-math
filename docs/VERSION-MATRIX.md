@@ -1,4 +1,4 @@
-﻿﻿﻿﻿﻿# 版本适配矩阵（Version Matrix）
+﻿# 版本适配矩阵（Version Matrix）
 
 > 目的：把"每个 CAD 版本都要真机测一遍"压缩成"每个编译 band 测一次"。
 > 依据：Autodesk 官方兼容表 + `CADAutoIME` 的分带编译实践（跑通 2007–2027）+ 我们自己的编译探测结果。
@@ -89,3 +89,15 @@
 - **最低版本**：我们的 `CadMath.Core`/`CadMath.Abstractions` 是 `netstandard2.0`，运行时要求 **.NET Framework 4.6.1+**。所以 2015/2016（CLR 4.5/4.6）只有在系统装了 4.6.1+ 时才能跑。Windows 10 及以上默认满足；真要支持 2013/2014 需要把 Core 降到 `net40`，得去掉 `record`/`init`/`Task` 等语法，属于重写级改动，暂不做。
 - **2026.1.2+ / 2025 Update 1.4** 把运行时换到 .NET 10：官方说"现有插件应继续可用"，但 2027 明确要求重编。稳妥做法是 `net10` band 单独编、单独测，不靠"应该可用"。
 - 我们尚未在 2019–2020 真机验证过拦截行为（只验证过编译与安装流程）。
+
+---
+
+## 怎么确认锚没跑偏
+
+规则 1 只有"编出来的二进制确实引用了最旧那版 SDK"时才成立，而 csproj 里写的版本号并不足以证明这一点（增量构建、传递依赖、版本提升都可能换掉实际引用）。所以每个 DLL 都直接读 AssemblyRef：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File build\verify-anchors.ps1
+```
+
+它读 `dist\setup.json`，对每个适配器比对 `acMgdVersion`（清单里声明）与 DLL 里的 `acmgd` 引用版本，同时对每个宿主（`CadMath03.dll`）打印实际引用。不符就退出码 1，CI 的 `hosts` 作业拿它当门禁。

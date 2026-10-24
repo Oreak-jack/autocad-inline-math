@@ -1,10 +1,13 @@
 name: tests
 
-# 只验证与 AutoCAD 无关的那部分：CadMath.Core（计算与判定）、
-# CadMath.Abstractions（契约/清单/选择）以及 tests/CadMath.Tests 里的断言。
-# Shell 与 CadMath.Adapter.Modern 是 net8.0-windows，且编译需要 Autodesk 的
-# 托管程序集（acmgd 等，属 Autodesk 版权文件，不能进 runner，也不能进仓库），
-# 所以这两个工程的编译只能在装了 CAD 的 Windows 上验证，见 docs/IMPLEMENTATION.md。
+# 两个作业：
+#   tests —— Linux 上跑与 AutoCAD 无关的那部分（Core 计算/判定 + Abstractions 契约/清单/选择），
+#            入口是 tests/CadMath.Tests/CadMath.Tests.csproj。
+#   hosts —— Windows 上完整构建四种宿主（2026 / 2025 / 2021-2024 / 2020），
+#            再用 build/verify-anchors.ps1 反射核对每个 DLL 实际引用的 acmgd 版本，
+#            最后跑安装器测试。Autodesk 托管程序集来自官方 NuGet（AutoCAD.NET），
+#            是公开包，所以 runner 上能编译；真机加载仍然只能在装了 CAD 的机器上验证，
+#            见 docs/IMPLEMENTATION.md 与 docs/VERSION-MATRIX.md。
 
 on:
   push:
@@ -34,8 +37,8 @@ jobs:
           dotnet-version: '8.0.x'
 
       # 只还原/构建测试工程，不用 dotnet build CadMath.sln：
-      # 解决方案里含有 net8.0-windows 工程，在 Linux 上会以 NETSDK1100 失败。
-      # 测试工程通过 ProjectReference 连带构建 Core 与 Abstractions，两者都是 net8.0。
+      # 解决方案里含有 net8.0-windows 与 net48 工程，在 Linux 上会失败。
+      # 测试工程通过 ProjectReference 连带构建 Core 与 Abstractions（netstandard2.0）。
       - name: Restore
         run: dotnet restore tests/CadMath.Tests/CadMath.Tests.csproj
 
@@ -45,3 +48,31 @@ jobs:
       # 运行器是自写的控制台断言，失败时返回退出码 1（tests/CadMath.Tests/Program.cs:34）。
       - name: Run assertions
         run: dotnet run --project tests/CadMath.Tests -c Release --no-build
+
+  hosts:
+    runs-on: windows-latest
+    timeout-minutes: 30
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '8.0.x'
+
+      # 构建四份宿主 + 四个 bundle + setup.json（NuGet 上的 AutoCAD.NET 24.0.0 / 25.0.1 / 25.1.0 / 23.1.0）
+      - name: Build hosts
+        shell: powershell
+        run: ./build/build.ps1
+
+      # 只看"编出来的二进制确实引用了对的那个 SDK"，不跑 AutoCAD
+      - name: Verify anchors
+        shell: powershell
+        run: ./build/verify-anchors.ps1
+
+      # 安装器测试全部在临时状态目录 + 假注册表根里跑，不碰真实安装
+      - name: Installer tests
+        shell: powershell
+        run: ./tools/setup/tests/Test-Setup.ps1

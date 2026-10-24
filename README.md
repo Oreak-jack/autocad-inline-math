@@ -189,6 +189,18 @@ powershell -ExecutionPolicy Bypass -File build\build.ps1
 powershell -ExecutionPolicy Bypass -File build\build.ps1 -Experimental
 ```
 
+构建完可以核对“编出来的二进制是否真的引用了对的那一版 SDK”（读 AssemblyRef，不看 csproj）：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File build\verify-anchors.ps1
+#   [OK]   modern-r26   acmgd=25.1.0.0（声明 25.1.0.0）
+#   [OK]   modern-r25   acmgd=25.0.0.0（声明 25.0.0.0）
+#   [OK]   legacy-r24   acmgd=24.0.0.0（声明 24.0.0.0）
+#   [OK]   legacy-r23   acmgd=23.1.0.0（声明 23.1.0.0）
+```
+
+这条检查也进 CI（`.github/workflows/tests.yml` 的 `hosts` 作业）。“某个 band 只测最新一个版本”的前提，就是编译锚确实落在 band 内最旧的 SDK 上。
+
 产物：
 
 ```

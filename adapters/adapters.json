@@ -11,7 +11,8 @@
       "verified": true,
       "status": "host-tested",
       "runtime": "net8.0-windows",
-      "host": "win64"
+      "host": "win64",
+      "acMgdVersion": "25.1.0.0"
     },
     {
       "id": "modern-r25",
@@ -23,7 +24,8 @@
       "verified": false,
       "status": "built",
       "runtime": "net8.0-windows",
-      "host": "win64-2025"
+      "host": "win64-2025",
+      "acMgdVersion": "25.0.0.0"
     },
     {
       "id": "legacy-r24",
@@ -35,7 +37,8 @@
       "verified": true,
       "status": "host-tested",
       "runtime": "net48",
-      "host": "win64-2024"
+      "host": "win64-2024",
+      "acMgdVersion": "24.0.0.0"
     },
     {
       "id": "legacy-r23",
@@ -47,7 +50,8 @@
       "verified": false,
       "status": "planned",
       "runtime": "net48",
-      "host": "win64-2020"
+      "host": "win64-2020",
+      "acMgdVersion": "23.1.0.0"
     }
   ]
 }
