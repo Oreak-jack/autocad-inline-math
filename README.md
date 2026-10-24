@@ -18,7 +18,7 @@
 | | 0.3.3 | 0.4.11 |
 | --- | --- | --- |
 | 计算与判定 | `Expression.cs` + `InputPolicy.cs` 被测试工程直接编译 | 独立的 `CadMath.Core` / `CadMath.Abstractions` 程序集 |
-| 键盘拦截 | `Plugin.cs` 里所有东西混在一起 | `CadMath.Adapter.Modern`（.NET 8）+ `CadMath.Adapter.Legacy2024` + `CadMath.Adapter.Legacy2020`（后两者 .NET Framework 4.8），共用 `KeystrokeAdapter` |
+| 键盘拦截 | `Plugin.cs` 里所有东西混在一起 | 7 个薄适配器工程（2026/2025 走 .NET 8，2021–2024、2020、2018、2017、2015–2016 走 .NET Framework 4.8），全部共用同一份 `KeystrokeAdapter` |
 | 生命周期 / 命令 | 同一个 `Plugin.cs` | `CadMath.Shell`（只有装配与转发） |
 | 多版本 | 无 | `adapters.json` + 适配器注册/选择/装载 |
 | 安装位置 | 全局 `ApplicationPlugins`，所有 CAD 版本共享 | `%LOCALAPPDATA%` 下的受管负载 + 每个 CAD 版本一条 `HKCU` 注册 |
@@ -48,8 +48,14 @@ src/
   CadMath.Abstractions/        契约层：PromptKind、Decision/Conversion、ICadAdapter、清单模型、HostSeries、选择算法
   CadMath.Core/                纯计算：表达式求值、坐标转换、输入判定（不引用任何 AutoCAD 程序集）
   CadMath.Shell/               宿主层：程序集入口、CM3* 命令、适配器管理与装载、日志、探测（程序集名仍是 CadMath03.dll）
-  CadMath.Adapter.Modern/      R25.x 适配器：拦截命令行、回调 Core、改写输入
-  CadMath.Adapter.Legacy/      R24.x 适配器占位（接口已就位，实现待接入）
+  CadMath.Adapter.Shared/      拦截实现（共享源码，被下面 7 个适配器工程按需链接）
+  CadMath.Adapter.Modern/      .NET 8，编译基准 25.1.0 → 2026（R25.1）
+  CadMath.Adapter.Modern2025/  .NET 8，编译基准 25.0.1 → 2025（R25.0）
+  CadMath.Adapter.Legacy2024/  .NET Framework 4.8，24.0.0 → 2021–2024（R24.0–R24.3）
+  CadMath.Adapter.Legacy2020/  .NET Framework 4.8，23.1.0 → 2020（R23.1，status 仍为 planned）
+  CadMath.Adapter.Legacy2018/  .NET Framework 4.8，22.0.0 → 2018（R22.0）
+  CadMath.Adapter.Legacy2017/  .NET Framework 4.8，21.0.2 → 2017（R21.0）
+  CadMath.Adapter.Legacy2015/  .NET Framework 4.8，20.1.0 → 2015–2016（R20.0–R20.1）
 tests/CadMath.Tests/           控制台测试运行器（不依赖任何测试框架）
 ```
 

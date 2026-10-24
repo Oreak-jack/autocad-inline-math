@@ -1,4 +1,4 @@
-﻿﻿# CadMath 架构（重写版）
+# CadMath 架构（重写版）
 
 目标：把 v0.3.3 的单文件插件拆成"计算引擎 / 适配器契约 / 宿主外壳 / 版本适配器"四层，
 让数学逻辑和 AutoCAD API 互不越界，把"能不能改"的问题先解决掉。安装器不在本次范围内。
@@ -107,13 +107,16 @@ public interface ICadAdapter
     },
     {
       "id": "legacy-r24",
-      "displayName": "旧版适配器（AutoCAD 2024 及更早，待接入）",
-      "assembly": "Adapters/CadMath.Adapter.Legacy.dll",
-      "type": "CadMath.Adapter.Legacy.LegacyAdapter",
+      "displayName": "旧版适配器（AutoCAD 2021–2024）",
+      "assembly": "Adapters/CadMath.Adapter.Legacy2024.dll",
+      "type": "CadMath.Adapter.Legacy2024.Legacy2024Adapter",
       "series": ["R24.0", "R24.1", "R24.2", "R24.3"],
-      "priority": 50,
-      "verified": false,
-      "runtime": "net8.0"
+      "priority": 100,
+      "verified": true,
+      "status": "host-tested",
+      "runtime": "net48",
+      "host": "win64-2024",
+      "acMgdVersion": "24.0.0.0"
     }
   ]
 }
