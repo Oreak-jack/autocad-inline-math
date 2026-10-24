@@ -3,7 +3,7 @@ using CadMath.Abstractions;
 namespace CadMath.Shell;
 
 /// <summary>
-/// 0.5.0：CM3ECHO 用。包一层真正的回显实现，按配置决定是否转出去。
+/// 0.5.0：CLMECHO 用。包一层真正的回显实现，按配置决定是否转出去。
 /// 关闭时只写日志，不往命令行插字。
 /// </summary>
 internal sealed class SwitchableFeedback : IUserFeedback

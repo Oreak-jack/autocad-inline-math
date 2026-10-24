@@ -1,10 +1,10 @@
-# CadMath 0.5.0
+# CadMath 0.5.1
 
-0.5.0 是本项目的第一个 **能力版本**：0.4.x 一直在扩覆盖（2015–2026 七个版本带）和修安装器，插件本身从 0.3.3 起没变过。这一版把用户天天用的那几件事补齐。
+0.5.0 是第一个 **能力版本**（回显、动态输入、CMDNAMES、失败阈值、CLMSTYLE、安装器清理与回滚）；0.5.1 在它基础上把插件命令统一改成 `CLM` 前缀，并补齐发行说明。
 
 ## 安装
 
-1. 下载 `CadMath-InlineMath-0.5.0.zip`，**完整解压**（不要在压缩包里双击）。
+1. 下载 `CadMath-InlineMath-0.5.1.zip`，**完整解压**（不要在压缩包里双击）。
 2. 关掉 AutoCAD。
 3. 双击 `CadMath-Setup.cmd`，选 `1. 安装插件`。
 
@@ -12,14 +12,18 @@
 
 ## 本版变化
 
+### 命令改名前缀（0.5.1）
+
+所有插件命令从 `CM3` 前缀改为 `CLM`：`CLMON` / `CLMOFF` / `CLMSTATUS` / `CLMCHECK` / `CLMPROBE` 换了名字，`CM3xxx` **不再注册**（升级后敲旧名会提示未知命令）。安装器与文档已同步。
+
 ### 插件
 
 - **计算结果回显**：输入 `100-30` 回车后，命令行会多写一行 `= 70`，不用再靠几何图形反推有没有算对。
-  不想要就 `CM3ECHO` 关掉（ON / OFF，直接回车＝切换），`CM3STATUS` 里能看到当前状态。
+  不想要就 `CLMECHO` 关掉（ON / OFF，直接回车＝切换），`CLMSTATUS` 里能看到当前状态。
 - **动态输入也拦**：以前只拦底部的命令行输入；现在十字光标旁的动态输入框同样会被识别与改写。
 - **命令态改用 `CMDNAMES`**：原来只认 LINE / PLINE / CIRCLE 等 16 个命令，DIM 线性标注、HATCH、带透明命令的写法全部漏掉。现在以 AutoCAD 自己报告的当前命令为准，任何需要距离或角度的提示都能用。
-- **失败不再一次就关**：适配器抛异常改为连续 3 次才保护性关闭（`CM3STATUS` 里有 `连败=`），瞬时抖动不会把功能关到底。
-- **`CM3STYLE`**：提示风格开关（AUTO 跟随原生 / STANDARD 统一提示），默认 AUTO。这一版先把开关与链路铺好。
+- **失败不再一次就关**：适配器抛异常改为连续 3 次才保护性关闭（`CLMSTATUS` 里有 `连败=`），瞬时抖动不会把功能关到底。
+- **`CLMSTYLE`**：提示风格开关（AUTO 跟随原生 / STANDARD 统一提示），默认 AUTO。这一版先把开关与链路铺好。
 
 ### 安装器
 
@@ -43,9 +47,9 @@
 
 | 文件 | 大小 | SHA-256 |
 | --- | --- | --- |
-| `CadMath-InlineMath-0.5.0.zip` | 562,539 | `b39352502e539075dcfb671ee4577ca34465eafaf279266ef8ee894b14210652` |
-| `CadMath-InlineMath-0.5.0-experimental.zip` | 562,530 | `4b614313d1c6b4272b61230e53a5fcae834f14a43dcab34cc54401ef892ce8a5` |
-| `setup.json` | 30,318 | 见 `SHA256SUMS.txt` |
+| `CadMath-InlineMath-0.5.1.zip` | 562,669 | `fb42214dcc3fd78622e6d97be54c524a43abdf565175bee22641bef0cbc029a3` |
+| `CadMath-InlineMath-0.5.1-experimental.zip` | 562,665 | `afb8128e175912f5fd9b1f86fb2f9b0f2f31e43cfbfdaeb8ee96d934920ed30b` |
+| `setup.json` | 30,318 | `e4d51060f787ebf4f8e13c7f31428c9262beb63598f5acb6f33738c468454d7b` |
 
 `experimental` 包把 2020（`legacy-r23`）的适配器状态临时提升为 `built`，供实机验证；正式包里它仍是 `planned`。
 
@@ -66,14 +70,16 @@ CadMath03-2015.bundle/            2015–2016（Contents/Win64-2015）
 
 ## 命令
 
+0.5.1 起所有命令统一用 `CLM` 前缀（原来的 `CM3` 名字不再注册）。
+
 | 命令 | 作用 |
 | --- | --- |
-| `CM3ON` / `CM3OFF` | 开启 / 暂停拦截 |
-| `CM3STATUS` | 开关、适配器、宿主、替换次数、回显、连败、风格、最后错误、日志路径 |
-| `CM3CHECK` | 读上一次选中 LINE 的长度 |
-| `CM3ECHO` | 改写回显开关（0.5.0） |
-| `CM3STYLE` | 提示风格（0.5.0） |
-| `CM3PROBE` | 宿主与适配器诊断 |
+| `CLMON` / `CLMOFF` | 开启 / 暂停拦截 |
+| `CLMSTATUS` | 开关、适配器、宿主、替换次数、回显、连败、风格、最后错误、日志路径 |
+| `CLMCHECK` | 读上一次选中 LINE 的长度 |
+| `CLMECHO` | 改写回显开关（0.5.1） |
+| `CLMSTYLE` | 提示风格（0.5.1） |
+| `CLMPROBE` | 宿主与适配器诊断 |
 
 ## 支持的写法
 
@@ -96,4 +102,4 @@ CadMath03-2015.bundle/            2015–2016（Contents/Win64-2015）
 
 ## 完整变更
 
-https://github.com/Oreak-jack/autocad-inline-math/compare/v0.4.11...v0.5.0
+https://github.com/Oreak-jack/autocad-inline-math/compare/v0.5.0...v0.5.1

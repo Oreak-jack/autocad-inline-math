@@ -303,6 +303,6 @@ powershell -ExecutionPolicy Bypass -File build\build.ps1 -Experimental
 # → dist/CadMath-InlineMath-<版本>-experimental.zip（所有 planned 适配器被提升为 built）
 ```
 
-验证者装好后跑 `CM3PROBE`，输出里 `host=` `clr=` `adapter=` `binding=` 与焦点类型齐全；把那段连同
+验证者装好后跑 `CLMPROBE`，输出里 `host=` `clr=` `adapter=` `binding=` 与焦点类型齐全；把那段连同
 `%TEMP%\CadMath03.log` 发回来即可判定。验证通过后把 `adapters/adapters.json` 里对应适配器的
 `status` 改成 `host-tested`，正式版随之开放。

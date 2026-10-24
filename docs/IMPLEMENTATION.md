@@ -1,4 +1,4 @@
-﻿﻿﻿# 实施记录：0.3.3 → 0.4.1
+﻿# 实施记录：0.3.3 → 0.4.1
 
 这份文档回答四个问题：原来那些代码去了哪、新架构怎么跑起来、哪些对外行为绝对不能变、以及怎么证明它没变。
 设计意图见 [ARCHITECTURE.md](ARCHITECTURE.md)（计划版，部分命名在实施时做了调整，以本文为准）。
@@ -13,7 +13,7 @@
 | --- | --- |
 | `[assembly: ExtensionApplication]` / `[assembly: CommandClass]` | `src/CadMath.Shell/ShellApplication.cs` |
 | `Initialize` / `Terminate` | `ShellApplication.Initialize` / `Terminate`（只剩装配与转发） |
-| `CM3ON` / `CM3OFF` / `CM3STATUS` / `CM3CHECK` 四个 `[CommandMethod]` | `src/CadMath.Shell/ShellCommands.cs` |
+| `CLMON` / `CLMOFF` / `CLMSTATUS` / `CLMCHECK` 四个 `[CommandMethod]` | `src/CadMath.Shell/ShellCommands.cs` |
 | `Dictionary<Document, Hooks>` 多文档状态 | `src/CadMath.Adapter.Modern/ModernAdapter.cs` 内嵌 `PromptHooks`（每文档一对事件订阅） |
 | `AcApp.PreTranslateMessage` 拦截 + 按键过滤 | `ModernAdapter` 的消息处理器 |
 | `Begin` / `End` 提示态状态机 | `PromptHooks` 对 `PromptingForPoint/Corner/Distance/Double/Angle/Integer` 与 `PromptingForString/Keyword/Selection/Entity/Nested/EnteringQuiescentState/CommandEnded/Cancelled/Failed` 的订阅 |
@@ -112,7 +112,7 @@ PreTranslateMessage(msg)
 对外契约：
 
 - 程序集名 `CadMath03.dll`；bundle 目录名 `CadMath03.bundle`。
-- 命令 `CM3ON` / `CM3OFF` / `CM3STATUS` / `CM3CHECK`。
+- 命令 `CLMON` / `CLMOFF` / `CLMSTATUS` / `CLMCHECK`。
 - 日志路径 `%TEMP%\CadMath03.log`，超过 1 MB 停止写入。
 - `PackageContents.xml`：`ProductCode {04913737-F911-4978-9F6B-2DB24F3DCC03}`、`UpgradeCode {0937D725-1309-48F0-A258-BC54916D174A}`、`SeriesMin/Max` = `R25.0`/`R25.1`、`LoadOnAutoCADStartup=True`、ModuleName `./Contents/Win64/CadMath03.dll`。这些一变，老用户升级就会并存两套或直接失效。
 
@@ -121,7 +121,7 @@ PreTranslateMessage(msg)
 - 只在**底部命令行**、只在 15 个命令的提示里生效：`LINE PLINE CIRCLE ARC RECTANG OFFSET MOVE COPY ROTATE SCALE STRETCH FILLET CHAMFER POLYGON ELLIPSE LENGTHEN`。
 - 只对 `Enter` / `Space` 触发；空输入、纯数字、LISP 表单、含非法字符的文本一律 `Pass`（原样放行），不是拒绝。
 - 成功结果按 `"0.################"` + InvariantCulture 格式化；结果是替换输入缓冲区，不是执行命令。
-- 适配器异常 = 关闭拦截，需 `CM3ON` 恢复（宁可不算，也不能画错）。
+- 适配器异常 = 关闭拦截，需 `CLMON` 恢复（宁可不算，也不能画错）。
 - 版本号只有一个来源：`Directory.Build.props`。
 
 ---

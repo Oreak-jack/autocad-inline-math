@@ -1,4 +1,4 @@
-﻿using Autodesk.AutoCAD.DatabaseServices;
+using Autodesk.AutoCAD.DatabaseServices;
 using Autodesk.AutoCAD.EditorInput;
 using Autodesk.AutoCAD.Runtime;
 using AcApp = Autodesk.AutoCAD.ApplicationServices.Application;
@@ -8,17 +8,17 @@ namespace CadMath.Shell;
 /// <summary>面向用户的命令。只做"转交 + 输出"，不实现计算或 CAD 细节。</summary>
 public static class ShellCommands
 {
-    [CommandMethod("CM3ON")]
+    [CommandMethod("CLMON")]
     public static void Enable() => ShellApplication.Manager?.Enable();
 
-    [CommandMethod("CM3OFF")]
+    [CommandMethod("CLMOFF")]
     public static void Disable() => ShellApplication.Manager?.Disable();
 
     /// <summary>
     /// 0.5.0：改写后的即时回显开关。关键字 ON / OFF，直接回车＝切换。
     /// 关闭后只写日志、不往命令行插字。
     /// </summary>
-    [CommandMethod("CM3ECHO")]
+    [CommandMethod("CLMECHO")]
     public static void Echo()
     {
         var manager = ShellApplication.Manager;
@@ -52,7 +52,7 @@ public static class ShellCommands
     /// 0.5.0：输入提示风格。AUTO = 跟随 AutoCAD 原生（默认），STANDARD = 统一提示。
     /// 直接回车＝在两者之间切换。
     /// </summary>
-    [CommandMethod("CM3STYLE")]
+    [CommandMethod("CLMSTYLE")]
     public static void Style()
     {
         var manager = ShellApplication.Manager;
@@ -80,7 +80,7 @@ public static class ShellCommands
         document.Editor.WriteMessage("\n提示风格：" + AdapterManager.DescribeStyle(next) + "\n");
     }
 
-    [CommandMethod("CM3STATUS")]
+    [CommandMethod("CLMSTATUS")]
     public static void Status()
     {
         var editor = AcApp.DocumentManager.MdiActiveDocument?.Editor;
@@ -91,7 +91,7 @@ public static class ShellCommands
     }
 
     /// <summary>读取选中的最后一条 LINE 的长度，用来核对表达式结果是否真的落到了几何上。</summary>
-    [CommandMethod("CM3CHECK")]
+    [CommandMethod("CLMCHECK")]
     public static void Check()
     {
         var document = AcApp.DocumentManager.MdiActiveDocument;
@@ -116,7 +116,7 @@ public static class ShellCommands
     /// 诊断用：把"这套适配器在这个 CAD 里到底看到了什么"打印出来并写入日志。
     /// 2024 适配器没有真机验证过，这一条命令就是让对方把现场贴回来的工具。
     /// </summary>
-    [CommandMethod("CM3PROBE")]
+    [CommandMethod("CLMPROBE")]
     public static void Probe()
     {
         var document = AcApp.DocumentManager.MdiActiveDocument;

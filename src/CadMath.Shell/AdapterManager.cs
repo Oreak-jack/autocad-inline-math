@@ -149,7 +149,7 @@ internal sealed class AdapterManager : IDisposable
         if (count < FailureLimit) return;
 
         Enabled = false;
-        _log.Write(LogLevel.Error, $"adapter failed {count} times in a row, interception disabled; CM3ON 可恢复");
+        _log.Write(LogLevel.Error, $"adapter failed {count} times in a row, interception disabled; CLMON 可恢复");
     }
 
     /// <summary>一次成功处理会把连败计数清零。</summary>
@@ -168,7 +168,7 @@ internal sealed class AdapterManager : IDisposable
         if (conversion.Decision != Decision.Replace) return conversion;
 
         Interlocked.Increment(ref _replacements);
-        LastError = null; // 改写成功说明链路是通的，别让 CM3STATUS 一直显示旧错误。
+        LastError = null; // 改写成功说明链路是通的，别让 CLMSTATUS 一直显示旧错误。
         return conversion;
     }
 

@@ -23,12 +23,12 @@ public sealed class ShellApplication : IExtensionApplication
             if (Manager.HasAdapter)
             {
                 editor?.WriteMessage(
-                    $"\n{ProductInfo.Name} {ProductInfo.Version} 底部命令栏计算已启用。关闭：CM3OFF；状态：CM3STATUS。\n");
+                    $"\n{ProductInfo.Name} {ProductInfo.Version} 底部命令栏计算已启用。关闭：CLMOFF；状态：CLMSTATUS。\n");
             }
             else
             {
                 editor?.WriteMessage(
-                    $"\n{ProductInfo.Name} {ProductInfo.Version} 未启用：{Manager.LastError ?? "没有可用适配器"}（CM3STATUS 查看详情）\n");
+                    $"\n{ProductInfo.Name} {ProductInfo.Version} 未启用：{Manager.LastError ?? "没有可用适配器"}（CLMSTATUS 查看详情）\n");
             }
         }
         catch (System.Exception ex)

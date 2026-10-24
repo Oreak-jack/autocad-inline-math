@@ -1,6 +1,6 @@
 namespace CadMath.Abstractions;
 
-/// <summary>候选被排除的原因。写进 <c>CM3STATUS</c>，让"为什么没用这个适配器"可查。</summary>
+/// <summary>候选被排除的原因。写进 <c>CLMSTATUS</c>，让"为什么没用这个适配器"可查。</summary>
 public static class RejectionReasons
 {
     public const string SeriesMismatch = "series-mismatch";

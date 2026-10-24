@@ -40,7 +40,7 @@ CadMath.Adapter.*  ─┐
                     ├─▶  CadMath.Abstractions  ◀─  CadMath.Core
 CadMath.Shell  ─────┘        (零依赖)               (只依赖 Abstractions)
 
-CadMath.Shell 另引用 acmgd/accoremgd/acdbmgd，只用于 IExtensionApplication 与 CM3* 命令
+CadMath.Shell 另引用 acmgd/accoremgd/acdbmgd，只用于 IExtensionApplication 与 CLM* 命令
 CadMath.Adapter.Modern 另引用 acmgd（需要拦消息与读输入缓冲区）
 ```
 
@@ -126,7 +126,7 @@ public interface ICadAdapter
 
 - `series`：`acmgd.dll` 的**主次版本**（25.1 → `R25.1`），不是年份。2025=R25.0，2026=R25.1。
 - `priority`：同一次匹配里数字大的先试；全部失败才算"无适配器"。
-- `verified`：只在 `CM3STATUS` 里显示"已验证 / 未验证"，不参与选择——避免"未验证"变成不可用。
+- `verified`：只在 `CLMSTATUS` 里显示"已验证 / 未验证"，不参与选择——避免"未验证"变成不可用。
 - `runtime`：记录该适配器编译目标，仅作诊断，装载失败时给出可读原因。
 
 ## 5. 选择算法（`AdapterSelector`，纯函数，可单测）
@@ -137,11 +137,11 @@ public interface ICadAdapter
 2. 过滤程序集缺失或路径越出 bundle 的项  → missing-assembly / path-escapes
 3. 按 priority 降序、同优先级按 id 序
 4. 依次 TryStart，失败记录原因后试下一个  → load-failed / missing-type / id-mismatch / start-failed
-5. 全部失败 → 无适配器状态：插件加载成功但拦截关闭，CM3STATUS 给出原因
+5. 全部失败 → 无适配器状态：插件加载成功但拦截关闭，CLMSTATUS 给出原因
 ```
 
 **关键取舍**：没有任何匹配时**不抛异常、不阻止 CAD 启动**。用户看到的是一句
-`CM3STATUS` 里的"未找到适配 R25.1 的适配器"，而不是加载失败。
+`CLMSTATUS` 里的"未找到适配 R25.1 的适配器"，而不是加载失败。
 
 ## 6. 宿主探测
 
@@ -169,7 +169,7 @@ public interface ICadAdapter
   → Pass：原样放行
      Reject：适配器吞掉按键 + 蜂鸣 + Shell 记日志（保留 v0.3.3 行为）
      Replace：适配器写回缓冲区（ReplaceInputQueue + OnSetSelectedTextQueue），原按键继续
-  → 任何异常：Shell 保护性关闭拦截，CM3ON 可恢复
+  → 任何异常：Shell 保护性关闭拦截，CLMON 可恢复
 ```
 
 对外行为与 v0.3.3 逐条对齐：普通数字、LISP 表单、含中文的输入一律 Pass；
@@ -182,7 +182,7 @@ public interface ICadAdapter
 - 各程序集 `AssemblyVersion/FileVersion` 由它生成；
 - `PackageContents.xml` 由模板 `bundle/PackageContents.xml` 在打包时替换
   `__CADMATH_VERSION__`（出现两处）；
-- `ProductInfo.Version` 从程序集读版本，`CM3STATUS` 不再写字面量。
+- `ProductInfo.Version` 从程序集读版本，`CLMSTATUS` 不再写字面量。
 
 `build/build.ps1 -AcadDir "<AutoCAD 安装目录>"` 产出 `dist/CadMath03.bundle/`、
 `dist/CadMath-InlineMath-<版本>.zip`、`dist/setup.json`（发行清单）与 `dist/SHA256SUMS.txt`。
@@ -203,7 +203,7 @@ public interface ICadAdapter
 |---|---|---|
 | Core 数学/判定 | `tests/CadMath.Tests` 控制台断言（无 NuGet 依赖） | 否 |
 | 清单解析 / 选择算法 / 宿主序列 | 同上 | 否 |
-| Shell 装配与适配器装载 | 真机冒烟：日志 + `CM3STATUS` | 是 |
+| Shell 装配与适配器装载 | 真机冒烟：日志 + `CLMSTATUS` | 是 |
 | 适配器行为（拦截、缓冲区、焦点） | 人工 UI 验收 + 日志核对 | 是 |
 | 安装器（扫描/匹配/安装/回滚/恢复） | `tools/setup/tests/Test-Setup.ps1`，假注册表根 + 临时状态目录 | 否 |
 

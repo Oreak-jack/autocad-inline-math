@@ -317,7 +317,7 @@ function Invoke-InstallGlobalFlow {
     if ($result.Success) {
         Write-Host ('安装成功：v{0} → {1}' -f $result.Version, $result.Path) -ForegroundColor Green
         if ($result.BackupPath) { Write-Host ('旧目录已备份：{0}' -f $result.BackupPath) }
-        Write-Host '请重启 AutoCAD，在命令行输入 CM3STATUS 确认。' -ForegroundColor Yellow
+        Write-Host '请重启 AutoCAD，在命令行输入 CLMSTATUS 确认。' -ForegroundColor Yellow
     } else {
         Write-Host ('安装失败：{0}' -f $result.Error) -ForegroundColor Red
     }
@@ -401,7 +401,7 @@ function Invoke-InstallFlow {
     if ($result.Success) {
         Write-Host ''
         Write-Host ('安装成功：v{0}，{1} 个实例。' -f $result.Version, @($result.Instances).Count) -ForegroundColor Green
-        Write-Host '文件安装与注册校验已通过；宿主内加载尚未验证 —— 请启动 AutoCAD，在命令行输入 CM3STATUS 确认。' -ForegroundColor Yellow
+        Write-Host '文件安装与注册校验已通过；宿主内加载尚未验证 —— 请启动 AutoCAD，在命令行输入 CLMSTATUS 确认。' -ForegroundColor Yellow
     } else {
         Write-Host ''
         Write-Host ('安装失败：{0}' -f $result.Error) -ForegroundColor Red
@@ -496,7 +496,7 @@ function Invoke-UpdateFlow {
         Write-Host '  4/5 解压、逐文件校验、替换负载并注册（详细过程见下方 [EXTRACT]/[VERIFY]/[COPY]/[REGISTER]）' -ForegroundColor White
         $result = Install-CadMathPackage -Setup $setup -SourcePath $zipPath -Instances $applicable -StateRoot $StateRoot -Architecture $Scan.Architecture -IsUpdate
         if ($result.Success) {
-            Write-Host ('更新成功：v{0}。请重启 AutoCAD 后输入 CM3STATUS 确认。' -f $result.Version) -ForegroundColor Green
+            Write-Host ('更新成功：v{0}。请重启 AutoCAD 后输入 CLMSTATUS 确认。' -f $result.Version) -ForegroundColor Green
         } else {
             Write-Host ('更新失败：{0}' -f $result.Error) -ForegroundColor Red
             if ($result.Rollback -eq 'succeeded') { Write-Host '回滚：已恢复到更新前的版本。' -ForegroundColor Green }
