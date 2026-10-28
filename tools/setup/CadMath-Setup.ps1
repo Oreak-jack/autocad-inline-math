@@ -41,7 +41,14 @@ if (Test-Path -LiteralPath $bundledSetup) {
     }
     catch { $ToolVersion = '' }
 }
-if ([string]::IsNullOrWhiteSpace($ToolVersion)) { $ToolVersion = '0.4.8' }
+if ([string]::IsNullOrWhiteSpace($ToolVersion) -and -not [string]::IsNullOrWhiteSpace($SetupJson) -and (Test-Path -LiteralPath $SetupJson)) {
+    # 从仓库根直接跑脚本时，setup.json 在 -SetupJson 指定的位置。
+    try {
+        $explicit = [regex]::Match([IO.File]::ReadAllText($SetupJson, [Text.Encoding]::UTF8), '"toolVersion"\s*:\s*"([^"]+)"')
+        if ($explicit.Success) { $ToolVersion = $explicit.Groups[1].Value }
+    } catch { }
+}
+if ([string]::IsNullOrWhiteSpace($ToolVersion)) { $ToolVersion = '0.5.3' }
 # 用户有没有显式指定安装方式：没指定时，交互模式会问一次，默认按版本注册。
 $ModeExplicit = $PSBoundParameters.ContainsKey('Mode')
 
@@ -89,7 +96,11 @@ function Get-PluginStateText {
             $versionText = '版本未知'
             if ($Instance.PluginVersion) { $versionText = 'v' + $Instance.PluginVersion }
             if (-not $Instance.PluginPathOk) { return ('已注册但文件缺失（{0}）' -f $Instance.PluginLoader) }
-            return ('已安装插件 {0}' -f $versionText)
+            $moduleText = ''
+            if ($Instance.PSObject.Properties['ModuleState'] -and $Instance.ModuleState -eq 'registry') {
+                $moduleText = '＋语境切换 ' + $(if ($Instance.ModuleVersion) { 'v' + $Instance.ModuleVersion } else { '版本未知' })
+            }
+            return ('已安装插件 {0}{1}' -f $versionText, $moduleText)
         }
         'bundle'   { return '已安装插件（旧式 ApplicationPlugins 目录，全局生效）' }
         'both'     { return '已安装插件（注册表 + 旧式目录并存，建议清理其一）' }
@@ -674,7 +685,15 @@ function Invoke-RollbackFlow {
                 Write-Warn -Stage 'ROLLBACK' ('备份里没有 {0} 需要的宿主：{1}' -f $instance.Label, $relative)
                 continue
             }
-            Set-InstanceRegistration -Instance $instance -Loader $loader -TrustedDirs $trusted -ReplaceDirs $old | Out-Null
+            # 两件产品都在备份负载里，一起指回去；缺哪件就跳过哪件。
+            $rollbackProducts = @(Get-RemovalProducts -Entry $relative | ForEach-Object {
+                [pscustomobject]@{ Id = $_.Id; Name = $_.Name; AppKey = $_.AppKey; Description = $_.Name; Loader = (Join-Path $restoreDir $_.Loader) }
+            } | Where-Object { Test-Path -LiteralPath $_.Loader })
+            if ($rollbackProducts.Count -eq 0) {
+                Write-Warn -Stage 'ROLLBACK' ('备份里没有 {0} 需要的宿主程序集：{1}' -f $instance.Label, $relative)
+                continue
+            }
+            Set-InstanceRegistration -Instance $instance -Products $rollbackProducts -TrustedDirs $trusted -ReplaceDirs $old | Out-Null
             Write-Info -Stage 'ROLLBACK' ('已把 {0} 指回旧版本（{1}）' -f $instance.Label, $relative)
             $entries.Add([pscustomobject]@{
                 instanceId  = $instance.Id
@@ -682,6 +701,7 @@ function Invoke-RollbackFlow {
                 label       = $instance.Label
                 entry       = $relative
                 loader      = $loader
+                products    = @($rollbackProducts | ForEach-Object { [pscustomobject]@{ id = $_.Id; name = $_.Name; version = $info.Version; appKey = $_.AppKey; loader = $_.Loader } })
                 installedAt = (Get-Date -Format 'o')
             })
         }

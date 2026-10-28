@@ -91,26 +91,38 @@ function Get-CadBuildInfo {
 function Get-InstancePluginState {
     param([string]$ProductPath)
     $result = [pscustomobject]@{
-        State       = 'none'
-        Loader      = $null
-        PathExists  = $false
-        Version     = $null
+        State         = 'none'
+        Loader        = $null
+        PathExists    = $false
+        Version       = $null
+        # 第二件产品（语境切换）独立一条注册项，单独探测，互不影响。
+        ModuleState   = 'none'
+        ModuleLoader  = $null
+        ModuleVersion = $null
     }
-    $appKey = Join-Path $ProductPath 'Applications\CadMathInlineMath'
-    if (-not (Test-Path -LiteralPath $appKey)) { return $result }
-    $result.State = 'registry'
-    $item = Get-ItemProperty -LiteralPath $appKey -ErrorAction SilentlyContinue
-    if ($item -ne $null) {
-        $prop = $item.PSObject.Properties['LOADER']
-        if ($prop -ne $null) {
-            $result.Loader = [string]$prop.Value
-            if ($result.Loader -and (Test-Path -LiteralPath $result.Loader)) {
-                $result.PathExists = $true
-                try {
-                    $name = [Reflection.AssemblyName]::GetAssemblyName($result.Loader)
-                    $result.Version = $name.Version.ToString(3)
-                } catch { }
-            }
+    foreach ($pair in @(@('Applications\CadMathInlineMath', 'main'), @('Applications\OreakContextInput', 'module'))) {
+        $candidate = Join-Path $ProductPath $pair[0]
+        if (-not (Test-Path -LiteralPath $candidate)) { continue }
+        $entry = Get-ItemProperty -LiteralPath $candidate -ErrorAction SilentlyContinue
+        if ($entry -eq $null) { continue }
+        $loaderProp = $entry.PSObject.Properties['LOADER']
+        if ($loaderProp -eq $null) { continue }
+        $loaderValue = [string]$loaderProp.Value
+        $version = $null
+        $pathOk = $false
+        if ($loaderValue -and (Test-Path -LiteralPath $loaderValue)) {
+            $pathOk = $true
+            try { $version = [Reflection.AssemblyName]::GetAssemblyName($loaderValue).Version.ToString(3) } catch { }
+        }
+        if ($pair[1] -eq 'module') {
+            $result.ModuleState = 'registry'
+            $result.ModuleLoader = $loaderValue
+            $result.ModuleVersion = $version
+        } else {
+            $result.State = 'registry'
+            $result.Loader = $loaderValue
+            $result.PathExists = $pathOk
+            $result.Version = $version
         }
     }
     return $result
@@ -172,6 +184,9 @@ function Invoke-EnvironmentScan {
                     PluginLoader   = $plugin.Loader
                     PluginPathOk   = $plugin.PathExists
                     PluginVersion  = $plugin.Version
+        ModuleState    = $plugin.ModuleState
+        ModuleLoader   = $plugin.ModuleLoader
+        ModuleVersion  = $plugin.ModuleVersion
                     LegacyBundle   = $false
                 })
             }

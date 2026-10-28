@@ -80,6 +80,36 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\CadMath-Setup.ps
 
 ---
 
+## 0.5.4 起：一套包、两件产品、两条注册项
+
+发行包里有**两件互相独立的插件**（CadMath03 与语境切换），它们共用这一个安装器：
+
+| | CadMath03 | 语境切换 |
+| --- | --- | --- |
+| 清单里的 `id` | `cadmath` | `contextinput` |
+| 程序集 | `CadMath03.dll` | `Oreak.ContextInput.dll` |
+| 版本 | `setup.releaseVersion`（随 CadMath 版本走） | `products[].version`（0.1.8，独立） |
+| 注册项 | `Applications\CadMathInlineMath` | `Applications\OreakContextInput` |
+
+`setup.json` 的 `products` 段就是这两条：
+
+```json
+"products": [
+  { "id": "cadmath", "name": "CadMath03", "version": "0.5.4",
+    "file": "CadMath03.dll", "appKey": "CadMathInlineMath", "description": "AutoCAD Inline Math" },
+  { "id": "contextinput", "name": "Oreak Context Input", "version": "0.1.8",
+    "file": "Oreak.ContextInput.dll", "appKey": "OreakContextInput", "description": "Context-Aware IME Switch" }
+]
+```
+
+安装时逐件写注册项、逐件回读校验：
+
+- 某件产品在负载里找不到文件 → 只跳过它并 `[WARN]`，另一件照装（"一个用不了不影响另一个"）。
+- 某件的注册项写失败 → 同样只报警，另一件继续。
+- `state.json` 的每条实例记录里，`products` 数组写明这件产品实际装到了哪个路径。
+- 卸载把两条注册项一起清掉；`--Rollback` 也会把两件一起指回备份里的旧版本。
+
+`bundle\PackageContents.xml` 里同样是两条 `ComponentEntry`（`CadMath03` 与 `OreakContextInput`），所以走 `ApplicationPlugins` 自动加载（方式二）时两件都会被加载，但仍是各自独立的程序集、各自独立的失败边界。
 ## 适配器匹配
 
 安装前会用发行清单 `setup.json` 逐条判断每个 CAD 实例能不能装：
@@ -234,7 +264,7 @@ CadMath-Setup.ps1 -Install <实例> -FromBundle D:\pkg\CadMath03.bundle -Yes
 
 ```powershell
 powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\tests\Test-Setup.ps1
-# 通过 40 项，失败 0 项
+# 通过 43 项，失败 0 项
 ```
 
 测试用临时 `-StateRoot` 与假注册表根（`HKCU:\Software\CadMathSetupTest\<guid>`），不会动真实安装；覆盖清单校验、适配器匹配的每个拒绝原因、zip 越界、安装/修复/卸载、`TRUSTEDPATHS` 合并与还原、事务回滚、崩溃后恢复、版本比较、两种安装方式（按版本注册与 ApplicationPlugins 全局）、CAD 运行时拒绝安装，以及启动批处理的行尾检查。

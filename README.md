@@ -1,11 +1,11 @@
-﻿# AutoCAD Inline Math
+# AutoCAD Inline Math
 
 [![tests](https://github.com/Oreak-jack/autocad-inline-math/actions/workflows/tests.yml/badge.svg)](https://github.com/Oreak-jack/autocad-inline-math/actions/workflows/tests.yml)
 
 在 AutoCAD 命令行里直接写算式：`100-30` 回车就是 `70`，`@100-30,0` 就是相对坐标 `@70,0`。
 支持长度、角度、坐标等所有"提示输入"的场景，不需要记命令、不需要开计算器、不跳出 CAD。
 
-当前版本 **0.5.3**，支持 AutoCAD 2015 ~ 2026（R20.0 ~ R25.1，共七个版本带；2024 / 2026 已真机验证）。AutoCAD 2020（R23.1）仍是**实验性支持**（已编译、安装流程已验证，待真机确认）。用命令行安装器 `CadMath-Setup.cmd` 安装、更新、卸载，见 [docs/INSTALLER.md](docs/INSTALLER.md)。
+当前版本 **0.5.4**，支持 AutoCAD 2015 ~ 2026（R20.0 ~ R25.1，共七个版本带；2024 / 2026 已真机验证）。AutoCAD 2020（R23.1）仍是**实验性支持**（已编译、安装流程已验证，待真机确认）。用命令行安装器 `CadMath-Setup.cmd` 安装、更新、卸载，见 [docs/INSTALLER.md](docs/INSTALLER.md)。
 
 ---
 
@@ -14,11 +14,11 @@
 0.3.3 是一个 155 行的 `Plugin.cs` 同时兼任程序集入口、命令、键盘拦截、状态机、日志和焦点探测，外加手工打包脚本和一个 470 行、只认全局 `ApplicationPlugins` 的 PowerShell 安装器。能用，但改一处要读全部。
 
 0.4.x 把同样的功能按职责拆开。0.4.0 只做拆分、拿掉安装器；0.4.1 把安装器以**命令行工具 + 按版本注册**的形式接回来；0.4.2 让一套发行包同时容纳两代 CLR 宿主（.NET 8 给 2025/2026，.NET Framework 4.8 给 2024）；0.4.3 把 2024 适配器从 `planned` 提升为 `host-tested`，正式包随之开放 2024；0.4.4 又加了一代 4.8 宿主（编译基准 23.1）给 2020，先以实验状态发布；0.5.1 把命令统一改成 `CLM` 前缀（`CM3xxx` 不再注册），新增 `CLMECHO`（改写回显）与 `CLMSTYLE`（提示风格），拦截改用 `CMDNAMES` 不再依赖 16 命令白名单。
-0.4.5 修掉了方向输入（`<-30`、`@<45`）被误判成坏表达式、以及拒绝时连回车一起吞掉的问题；0.4.6 修掉了"检查更新"在 0.4.5 上必然失败的 `zip` 属性错误（旧清单格式兼容问题）；0.4.7 让菜单 2 把每一步都打出来（连接、版本、下载进度、解压校验、替换注册），不再有一段看起来像卡死的静默期；0.4.8 让安装器的横幅与日志版本号取自同包的 `setup.json`，不再显示编译期常量（0.4.7 的包里还印着 v0.4.5）；0.4.9 修掉了从浏览器下载、解压后安装时 dll 带"来自网络"标记、导致 AutoCAD 2024 拒绝加载（0x80131515）的问题——安装器改为在复制进负载时抹掉该标记；0.4.10 把 2025 从 2026 的宿主里拆出来（`modern-r25` 改用 2025 的 SDK 编译），并把 2021–2024 的编译基准从 24.3 换成 24.0；0.4.11 顺着同一条规则补齐 2018（`legacy-r22`）、2017（`legacy-r21`）、2015–2016（`legacy-r20`）三个 band，覆盖范围下探到 2015；0.5.1 给插件本身加能力：计算结果回显（`= 70`，`CLMECHO` 开关）、升级后自动清理旧负载、`-Rollback` 一键退回上一个版本、适配器连败 3 次才保护性关闭、命令态改用 `CMDNAMES` 不再受 16 命令白名单限制、`CLMSTYLE` 提示风格开关；0.5.2 移除了 0.5.0 里那个"动态输入框也拦"的分支——实测 2026 的 acmgd 里没有对应类型、窗口层也拿不到输入框，那条路径永远不可能生效，留着只会吞键并误导日志；0.5.3 修掉 0.5.2 引入的两处问题：一是合规清理时把 `AllowedFocus` 里唯一在 2025/2026 上能命中的判定删掉了（改为按类型名子串判断，不再写死内部类型名），二是回显在提示行还没刷新时同步写入、把 `5+6 = 11` 叠成 `5+6 = 1111`（改为延后 90 ms 写入），另补了崩溃恢复后提示钩子的自愈与 `CLMFOCUS` 诊断命令。分带规则见 [docs/VERSION-MATRIX.md](docs/VERSION-MATRIX.md) 的"编译锚取 band 内最旧"规则，这样每个 band 只编一份、只需测最新一个版本。
+0.4.5 修掉了方向输入（`<-30`、`@<45`）被误判成坏表达式、以及拒绝时连回车一起吞掉的问题；0.4.6 修掉了"检查更新"在 0.4.5 上必然失败的 `zip` 属性错误（旧清单格式兼容问题）；0.4.7 让菜单 2 把每一步都打出来（连接、版本、下载进度、解压校验、替换注册），不再有一段看起来像卡死的静默期；0.4.8 让安装器的横幅与日志版本号取自同包的 `setup.json`，不再显示编译期常量（0.4.7 的包里还印着 v0.4.5）；0.4.9 修掉了从浏览器下载、解压后安装时 dll 带"来自网络"标记、导致 AutoCAD 2024 拒绝加载（0x80131515）的问题——安装器改为在复制进负载时抹掉该标记；0.4.10 把 2025 从 2026 的宿主里拆出来（`modern-r25` 改用 2025 的 SDK 编译），并把 2021–2024 的编译基准从 24.3 换成 24.0；0.4.11 顺着同一条规则补齐 2018（`legacy-r22`）、2017（`legacy-r21`）、2015–2016（`legacy-r20`）三个 band，覆盖范围下探到 2015；0.5.1 给插件本身加能力：计算结果回显（`= 70`，`CLMECHO` 开关）、升级后自动清理旧负载、`-Rollback` 一键退回上一个版本、适配器连败 3 次才保护性关闭、命令态改用 `CMDNAMES` 不再受 16 命令白名单限制、`CLMSTYLE` 提示风格开关；0.5.2 移除了 0.5.0 里那个"动态输入框也拦"的分支——实测 2026 的 acmgd 里没有对应类型、窗口层也拿不到输入框，那条路径永远不可能生效，留着只会吞键并误导日志；0.5.4 修掉 0.5.2 引入的两处问题：一是合规清理时把 `AllowedFocus` 里唯一在 2025/2026 上能命中的判定删掉了（改为按类型名子串判断，不再写死内部类型名），二是回显在提示行还没刷新时同步写入、把 `5+6 = 11` 叠成 `5+6 = 1111`（改为延后 90 ms 写入），另补了崩溃恢复后提示钩子的自愈与 `CLMFOCUS` 诊断命令。分带规则见 [docs/VERSION-MATRIX.md](docs/VERSION-MATRIX.md) 的"编译锚取 band 内最旧"规则，这样每个 band 只编一份、只需测最新一个版本。
 
 下面是 0.3.3 与当前版本的职责对照：
 
-| | 0.3.3 | 0.5.3 |
+| | 0.3.3 | 0.5.4 |
 | --- | --- | --- |
 | 计算与判定 | `Expression.cs` + `InputPolicy.cs` 被测试工程直接编译 | 独立的 `CadMath.Core` / `CadMath.Abstractions` 程序集 |
 | 键盘拦截 | `Plugin.cs` 里所有东西混在一起 | 7 个薄适配器工程（2026/2025 走 .NET 8，2021–2024、2020、2018、2017、2015–2016 走 .NET Framework 4.8），全部共用同一份 `KeystrokeAdapter` |
@@ -31,22 +31,37 @@
 
 ---
 
+## 两件产品，一套安装器
+
+0.5.4 起，发行包里带两件**互相独立**的插件——它们只共用安装器和发行包，运行期互不认识：
+
+| | CadMath03（本仓库主线） | 语境切换（Oreak ContextInput） |
+| --- | --- | --- |
+| 作用 | 命令行里直接算数：`100-30` 回车 → `70` | 双击编辑文字时把输入法切中文，退出编辑切回英文 |
+| 程序集 | `CadMath03.dll` | `Oreak.ContextInput.dll` + `Oreak.ContextInput.Core.dll` |
+| 版本线 | `0.5.4` | `0.1.8`，独立维护 |
+| 注册项 | `Applications\CadMathInlineMath` | `Applications\OreakContextInput` |
+| 命令 | `CLMON` `CLMOFF` `CLMSTATUS` `CLMCHECK` `CLMPROBE` `CLMECHO` `CLMSTYLE` `CLMFOCUS` | `OCION` `OCIOFF` `OCIOBSERVE` `OCISTATUS` `OCISYMBOLSON` `OCISYMBOLSOFF` `OCITESTDRAWING` |
+| 默认状态 | 开启 | 开启（装完即生效，不用再输入命令） |
+
+各自一条注册项意味着各自加载：**一件写坏、文件缺失或初始化失败，不会让另一件也起不来**。安装器逐件写、逐件校验，失败的那件单独报警，另一件照常工作；卸载时两件一起清干净。细节见 [docs/CONTEXTINPUT.md](docs/CONTEXTINPUT.md)。
 ## 目录结构
 
 ```
 CadMath.sln
-Directory.Build.props          版本号的唯一来源（0.5.3）
+Directory.Build.props          版本号的唯一来源（0.5.4）
 adapters/adapters.json         适配器清单（随包分发，运行时选择用）
 bundle/PackageContents.xml     包描述模板，打包时注入版本
 build/build.ps1                一条命令产出 bundle + zip + setup.json + SHA256SUMS.txt
 docs/ARCHITECTURE.md           分层设计
 docs/IMPLEMENTATION.md         实施记录：职责映射、时序、不变式、验证
 docs/INSTALLER.md              命令行安装器：安装位置、匹配规则、事务与回滚
+docs/CONTEXTINPUT.md           语境切换（独立插件）：机制、命令、边界
 tools/setup/                   命令行安装器（PowerShell 5.1）
   CadMath-Setup.cmd            入口
   CadMath-Setup.ps1            菜单与流程
   lib/                         扫描、清单、注册表、安装/回滚、发行版访问
-  tests/Test-Setup.ps1         安装器自动化测试（40 项）
+  tests/Test-Setup.ps1         安装器自动化测试（43 项）
 src/
   CadMath.Abstractions/        契约层：PromptKind、Decision/Conversion、ICadAdapter、清单模型、HostSeries、选择算法
   CadMath.Core/                纯计算：表达式求值、坐标转换、输入判定（不引用任何 AutoCAD 程序集）
@@ -59,7 +74,10 @@ src/
   CadMath.Adapter.Legacy2018/  .NET Framework 4.8，22.0.0 → 2018（R22.0）
   CadMath.Adapter.Legacy2017/  .NET Framework 4.8，21.0.2 → 2017（R21.0）
   CadMath.Adapter.Legacy2015/  .NET Framework 4.8，20.1.0 → 2015–2016（R20.0–R20.1）
+  Oreak.ContextInput.Core/    语境切换的纯策略（状态机、符号策略，零 CAD 依赖，netstandard2.0）
+  Oreak.ContextInput.Cad/     语境切换的 CAD 侧实现（IME 读写、焦点判定），程序集名 Oreak.ContextInput.dll
 tests/CadMath.Tests/           控制台测试运行器（不依赖任何测试框架）
+tests/Oreak.ContextInput.Tests/ 语境切换的策略测试（73 条）
 ```
 
 依赖方向只有一条：
@@ -114,13 +132,13 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\CadMath-Setup.ps
 做不了：`CadMath.Core` 与 `CadMath.Abstractions` 是 `netstandard2.0`，运行下限是 **.NET Framework 4.6.1**。
 
 2021–2024 的适配器（`legacy-r24`）状态是 `host-tested`，正式包直接支持：在 2024 里装出来的
-`LOADER` 指向 `...\payload\0.5.3\Contents\Win64-2024\CadMath03.dll`。它刻意用 **2021 的 SDK**（`24.0.0`）
+`LOADER` 指向 `...\payload\0.5.4\Contents\Win64-2024\CadMath03.dll`。它刻意用 **2021 的 SDK**（`24.0.0`）
 编译——只依赖 2021 就有的 API，2022/2023/2024 运行时由 AutoCAD 解析成它自己更新的那一份。
 
 2020 的适配器（`legacy-r23`）在 0.5.1 里状态仍是 `planned`（**实验性**，只做了编译与安装流程验证，
 还没有人在真实 AutoCAD 2020 上跑过）。给 2020 机器测试请用实验包 `build\build.ps1 -Experimental`
-产出的 `CadMath-InlineMath-0.5.3-experimental.zip`：它把这个适配器临时提升为 `built`，装出来的
-`LOADER` 指向 `...\payload\0.5.3\Contents\Win64-2020\CadMath03.dll`。验证通过后把
+产出的 `CadMath-InlineMath-0.5.4-experimental.zip`：它把这个适配器临时提升为 `built`，装出来的
+`LOADER` 指向 `...\payload\0.5.4\Contents\Win64-2020\CadMath03.dll`。验证通过后把
 `adapters/adapters.json` 里 `legacy-r23` 的 `status` 改成 `host-tested` 再发正式版。
 
 想确认当前这台机器上装的是哪一代，在对应版本的 AutoCAD 命令行里跑：
@@ -251,13 +269,13 @@ dist/CadMath03-2024.bundle/           2021 ~ 2024 专用包（同上，Series R2
 dist/CadMath03-2020.bundle/           2020 专用包（同上，Series R23.1）
 dist/setup.json                       发行清单：版本、hosts（系列→入口 DLL）、逐文件 SHA-256、适配器状态
 dist/tools/setup/                     安装器（随 zip 分发）
-dist/CadMath-InlineMath-0.5.3.zip    正式包（-NoZip 可跳过）：七个 bundle + 安装器 + setup.json
-dist/experimental/CadMath-InlineMath-0.5.3-experimental.zip
+dist/CadMath-InlineMath-0.5.4.zip    正式包（-NoZip 可跳过）：七个 bundle + 安装器 + setup.json
+dist/experimental/CadMath-InlineMath-0.5.4-experimental.zip
                                       实验包：把 planned 适配器临时提为 built（给 2020 等未验证版本试用）
 dist/SHA256SUMS.txt                   zip 的 SHA-256（便于人工核对）
 ```
 
-版本号只写在 `Directory.Build.props`（`<Version>0.5.3</Version>`），程序和 `PackageContents.xml` 都从那里取；zip 名与 `setup.json` 里的版本也来自同一处。
+版本号只写在 `Directory.Build.props`（`<Version>0.5.4</Version>`），程序和 `PackageContents.xml` 都从那里取；zip 名与 `setup.json` 里的版本也来自同一处。
 
 两个本机会踩的坑，脚本事先规避了：
 
@@ -333,7 +351,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File tools\setup\tests\Test-Setup
 ## 日志与诊断
 
 - 路径：`%TEMP%\CadMath03.log`（超过 1 MB 停止写入）。
-- 关键行：`shell 0.5.3 start; host=R25.1`、`adapter modern-r26 active`、`replacement_requested 100-30 => 70 command=LINE msg=0x100`、`adapter failure #1`（连败 3 次才 `interception disabled`）。
+- 关键行：`shell 0.5.4 start; host=R25.1`、`adapter modern-r26 active`、`replacement_requested 100-30 => 70 command=LINE msg=0x100`、`adapter failure #1`（连败 3 次才 `interception disabled`）。
 - `CLMSTATUS` 会输出开关状态、活动适配器、替换次数、最后一次错误、日志路径，以及被排除的适配器及原因。
 - 想在没有 CAD 的环境里验证探测逻辑，可设 `CADMATH_HOST_SERIES=R25.1`。
 - 在 2024 上排查问题先跑 `CLMPROBE`，它会打印宿主 release、acmgd 版本、适配器、绑定解析结果与焦点类型。

@@ -54,6 +54,27 @@ function Read-SetupManifest {
             }
         }
     }
+    # products 可选：一份安装包容纳多件产品（各自版本、各自注册项）。
+    if ($doc.PSObject.Properties['products'] -and $doc.products -ne $null) {
+        $seenProducts = @{}
+        $seenAppKeys = @{}
+        foreach ($product in @($doc.products)) {
+            foreach ($field in @('id', 'name', 'file', 'appKey')) {
+                if ($product.PSObject.Properties[$field] -eq $null -or [string]::IsNullOrWhiteSpace([string]$product.$field)) {
+                    throw ('产品缺少字段 {0}。' -f $field)
+                }
+            }
+            $pid2 = ([string]$product.id).ToLowerInvariant()
+            if ($seenProducts.ContainsKey($pid2)) { throw ('产品 id 重复：{0}' -f $product.id) }
+            $seenProducts[$pid2] = $true
+            $appKey = ([string]$product.appKey).Trim()
+            if ($seenAppKeys.ContainsKey($appKey)) { throw ('产品 appKey 重复：{0}' -f $appKey) }
+            $seenAppKeys[$appKey] = $true
+            if ([string]$product.file -match '[\\/]' -or [string]$product.file -match '\.\.') {
+                throw ('产品的 file 只能是文件名：{0}' -f $product.file)
+            }
+        }
+    }
     if ($doc.files -ne $null) {
         foreach ($file in @($doc.files)) {
             if (-not $file.path) { throw '发行清单的 files 条目缺少 path。' }

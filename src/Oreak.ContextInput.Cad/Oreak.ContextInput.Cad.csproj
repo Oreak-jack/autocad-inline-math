@@ -1,0 +1,43 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <!--
+    独立的 AutoCAD 插件（自己的 ExtensionApplication、自己的 OC* 命令）。
+    与 CadMath 只共用安装器和发行包，运行时互不依赖：
+    本 DLL 加载失败/初始化抛异常，CadMath03.dll 照常工作。
+  -->
+  <PropertyGroup>
+    <TargetFrameworks>net8.0-windows;net48</TargetFrameworks>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AssemblyName>Oreak.ContextInput</AssemblyName>
+    <RootNamespace>Oreak.ContextInput</RootNamespace>
+    <PlatformTarget>x64</PlatformTarget>
+    <UseWindowsForms>true</UseWindowsForms>
+    <UseWPF>true</UseWPF>
+    <Version>0.1.8</Version>
+    <AssemblyVersion>0.1.8.0</AssemblyVersion>
+    <FileVersion>0.1.8.0</FileVersion>
+    <Product>Oreak ContextInput</Product>
+    <Description>Switch the IME to Chinese while an AutoCAD text editor is active.</Description>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Oreak.ContextInput.Core\Oreak.ContextInput.Core.csproj" />
+  </ItemGroup>
+
+  <!-- 引用版本由 Directory.Build.props 的 AcadSdkVersion / AcadLegacySdkVersion 决定，
+       build.ps1 会按宿主带逐个覆盖，和 CadMath03 的编法完全一致；只编译、不复制 Autodesk 二进制。 -->
+  <ItemGroup Condition="'$(TargetFramework)' == 'net8.0-windows'">
+    <PackageReference Include="AutoCAD.NET" Version="$(AcadSdkVersion)" ExcludeAssets="runtime" />
+    <PackageReference Include="AutoCAD.NET.Core" Version="$(AcadSdkModelVersion)" ExcludeAssets="runtime" />
+    <PackageReference Include="AutoCAD.NET.Model" Version="$(AcadSdkModelVersion)" ExcludeAssets="runtime" />
+  </ItemGroup>
+
+  <ItemGroup Condition="'$(TargetFramework)' == 'net48'">
+    <PackageReference Include="AutoCAD.NET" Version="$(AcadLegacySdkVersion)" ExcludeAssets="runtime" />
+    <PackageReference Include="AutoCAD.NET.Core" Version="$(AcadLegacySdkVersion)" ExcludeAssets="runtime" />
+    <PackageReference Include="AutoCAD.NET.Model" Version="$(AcadLegacySdkVersion)" ExcludeAssets="runtime" />
+  </ItemGroup>
+
+</Project>

@@ -1,10 +1,18 @@
 ﻿# CadMath 安装工具 · 注册表事务
 # 只操作 HKCU（或测试注入的假根）。不触碰 SECURELOAD。
+#
+# 两件产品共用安装器、各自一条注册项：
+#   Applications\CadMathInlineMath  -> CadMath03.dll
+#   Applications\OreakContextInput  -> Oreak.ContextInput.dll
+# 它们各自加载、各自失败：一条注册项写坏不会连累另一条。
 Set-StrictMode -Version 2
 
 function Get-RegistrationKey {
-    param([string]$ProductPath)
-    return (Join-Path $ProductPath 'Applications\CadMathInlineMath')
+    param(
+        [Parameter(Mandatory)][string]$ProductPath,
+        [string]$AppKey = 'CadMathInlineMath'
+    )
+    return (Join-Path $ProductPath ('Applications\' + $AppKey))
 }
 
 function Get-ProfileKeys {
@@ -36,15 +44,14 @@ function Get-TrustedPathsEntry {
     return $entries.ToArray()
 }
 
-function Get-RegistrationSnapshot {
-    param([string]$ProductPath)
-    $appKey = Get-RegistrationKey -ProductPath $ProductPath
-    $exists = Test-Path -LiteralPath $appKey
+function Get-SingleKeySnapshot {
+    param([string]$AppKey)
+    $exists = Test-Path -LiteralPath $AppKey
     # 用"名称/值/类型"数组而不是哈希表：既能写进 JSON 的事务日志，
     # 又能保证回滚时 DWORD 仍然写回 DWORD，不会被降级成字符串。
     $values = New-Object System.Collections.Generic.List[object]
     if ($exists) {
-        $key = Get-Item -LiteralPath $appKey -ErrorAction SilentlyContinue
+        $key = Get-Item -LiteralPath $AppKey -ErrorAction SilentlyContinue
         if ($key -ne $null) {
             foreach ($name in $key.GetValueNames()) {
                 $values.Add([pscustomobject]@{
@@ -56,36 +63,66 @@ function Get-RegistrationSnapshot {
         }
     }
     return [pscustomobject]@{
+        AppKey  = $AppKey
+        Existed = $exists
+        Values  = $values.ToArray()
+    }
+}
+
+function Get-RegistrationSnapshot {
+    param(
+        [Parameter(Mandatory)][string]$ProductPath,
+        [string[]]$AppKeys = @('CadMathInlineMath', 'OreakContextInput')
+    )
+    $keys = New-Object System.Collections.Generic.List[object]
+    foreach ($appKey in $AppKeys) {
+        $keys.Add((Get-SingleKeySnapshot -AppKey (Get-RegistrationKey -ProductPath $ProductPath -AppKey $appKey)))
+    }
+    return [pscustomobject]@{
         ProductPath = $ProductPath
-        AppKey      = $appKey
-        Existed     = $exists
-        Values      = $values.ToArray()
+        Keys        = $keys.ToArray()
         Trusted     = (Get-TrustedPathsEntry -ProductPath $ProductPath)
+    }
+}
+
+function Restore-SingleKey {
+    param($Key)
+    if ($Key -eq $null) { return }
+    $appKey = [string]$Key.PSObject.Properties['AppKey'].Value
+    if ([string]::IsNullOrWhiteSpace($appKey)) { return }
+    if (Test-Path -LiteralPath $appKey) { Remove-Item -LiteralPath $appKey -Recurse -Force }
+    if (-not $Key.Existed) { return }
+    New-Item -Path $appKey -Force | Out-Null
+    foreach ($entry in @($Key.Values)) {
+        if ($entry -eq $null) { continue }
+        $name = [string]$entry.Name
+        if ([string]::IsNullOrWhiteSpace($name)) { continue }
+        $kind = 'String'
+        if ($entry.PSObject.Properties['Kind'] -and $entry.Kind) { $kind = [string]$entry.Kind }
+        $value = $entry.Value
+        if ($kind -eq 'DWord') { $value = [int]$value }
+        elseif ($kind -eq 'QWord') { $value = [long]$value }
+        elseif ($kind -eq 'MultiString') { $value = [string[]]@($value) }
+        else { $value = [string]$value }
+        New-ItemProperty -LiteralPath $appKey -Name $name -Value $value -PropertyType $kind -Force | Out-Null
     }
 }
 
 function Restore-RegistrationSnapshot {
     param($Snapshot)
     if ($Snapshot -eq $null) { return }
-    $appKey = [string]$Snapshot.AppKey
-    if ([string]::IsNullOrWhiteSpace($appKey)) { return }
-    if (Test-Path -LiteralPath $appKey) { Remove-Item -LiteralPath $appKey -Recurse -Force }
-    if ($Snapshot.Existed) {
-        New-Item -Path $appKey -Force | Out-Null
-        foreach ($entry in @($Snapshot.Values)) {
-            if ($entry -eq $null) { continue }
-            $name = [string]$entry.Name
-            if ([string]::IsNullOrWhiteSpace($name)) { continue }
-            $kind = 'String'
-            if ($entry.PSObject.Properties['Kind'] -and $entry.Kind) { $kind = [string]$entry.Kind }
-            $value = $entry.Value
-            if ($kind -eq 'DWord') { $value = [int]$value }
-            elseif ($kind -eq 'QWord') { $value = [long]$value }
-            elseif ($kind -eq 'MultiString') { $value = [string[]]@($value) }
-            else { $value = [string]$value }
-            New-ItemProperty -LiteralPath $appKey -Name $name -Value $value -PropertyType $kind -Force | Out-Null
+    # 兼容旧事务日志（只有 AppKey + Values）。
+    if ($Snapshot.PSObject.Properties['Keys'] -and $Snapshot.Keys) {
+        foreach ($key in @($Snapshot.Keys)) { Restore-SingleKey -Key $key }
+    } else {
+        $legacy = [pscustomobject]@{
+            AppKey  = [string]$Snapshot.AppKey
+            Existed = [bool]$Snapshot.Existed
+            Values  = @($Snapshot.Values)
         }
+        Restore-SingleKey -Key $legacy
     }
+
     foreach ($entry in @($Snapshot.Trusted)) {
         if ($entry -eq $null) { continue }
         $variables = [string]$entry.VariablesKey
@@ -139,17 +176,28 @@ function Remove-TrustedPath {
 function Set-InstanceRegistration {
     param(
         [Parameter(Mandatory)]$Instance,
-        [Parameter(Mandatory)][string]$Loader,
+        # 每项：{ Id, AppKey, Loader, Description }。逐个写，互不影响。
+        [Parameter(Mandatory)][object[]]$Products,
         [Parameter(Mandatory)][string[]]$TrustedDirs,
         # 0.5.0：升级时传旧负载的两条路径，写 TRUSTEDPATHS 时顺手换掉，避免一条条累积。
         [string[]]$ReplaceDirs = @()
     )
-    $appKey = Get-RegistrationKey -ProductPath $Instance.ProductPath
-    if (-not (Test-Path -LiteralPath $appKey)) { New-Item -Path $appKey -Force | Out-Null }
-    New-ItemProperty -LiteralPath $appKey -Name 'DESCRIPTION' -Value 'AutoCAD Inline Math' -PropertyType String -Force | Out-Null
-    New-ItemProperty -LiteralPath $appKey -Name 'LOADER' -Value $Loader -PropertyType String -Force | Out-Null
-    New-ItemProperty -LiteralPath $appKey -Name 'LOADCTRLS' -Value 2 -PropertyType DWord -Force | Out-Null
-    New-ItemProperty -LiteralPath $appKey -Name 'MANAGED' -Value 1 -PropertyType DWord -Force | Out-Null
+    $registered = New-Object System.Collections.Generic.List[object]
+    $failures = New-Object System.Collections.Generic.List[object]
+    foreach ($product in $Products) {
+        $appKey = Get-RegistrationKey -ProductPath $Instance.ProductPath -AppKey ([string]$product.AppKey)
+        try {
+            if (-not (Test-Path -LiteralPath $appKey)) { New-Item -Path $appKey -Force | Out-Null }
+            New-ItemProperty -LiteralPath $appKey -Name 'DESCRIPTION' -Value ([string]$product.Description) -PropertyType String -Force | Out-Null
+            New-ItemProperty -LiteralPath $appKey -Name 'LOADER' -Value ([string]$product.Loader) -PropertyType String -Force | Out-Null
+            New-ItemProperty -LiteralPath $appKey -Name 'LOADCTRLS' -Value 2 -PropertyType DWord -Force | Out-Null
+            New-ItemProperty -LiteralPath $appKey -Name 'MANAGED' -Value 1 -PropertyType DWord -Force | Out-Null
+            $registered.Add([string]$product.Id)
+        } catch {
+            $failures.Add([pscustomobject]@{ Id = [string]$product.Id; Error = $_.Exception.Message })
+        }
+    }
+
     $touched = 0
     foreach ($entry in @(Get-TrustedPathsEntry -ProductPath $Instance.ProductPath)) {
         if (-not (Test-Path -LiteralPath $entry.VariablesKey)) { continue }
@@ -161,19 +209,22 @@ function Set-InstanceRegistration {
             $touched++
         }
     }
-    return [pscustomobject]@{ AppKey = $appKey; ProfilesUpdated = $touched }
+    return [pscustomobject]@{ Registered = $registered.ToArray(); Failures = $failures.ToArray(); ProfilesUpdated = $touched }
 }
 
 function Remove-InstanceRegistration {
     param(
         [Parameter(Mandatory)]$Instance,
+        [Parameter(Mandatory)][object[]]$Products,
         [Parameter(Mandatory)][string[]]$OwnedDirs
     )
-    $appKey = Get-RegistrationKey -ProductPath $Instance.ProductPath
-    $removedKey = $false
-    if (Test-Path -LiteralPath $appKey) {
-        Remove-Item -LiteralPath $appKey -Recurse -Force
-        $removedKey = $true
+    $removed = New-Object System.Collections.Generic.List[string]
+    foreach ($product in $Products) {
+        $appKey = Get-RegistrationKey -ProductPath $Instance.ProductPath -AppKey ([string]$product.AppKey)
+        if (Test-Path -LiteralPath $appKey) {
+            Remove-Item -LiteralPath $appKey -Recurse -Force
+            $removed.Add([string]$product.Id)
+        }
     }
     $touched = 0
     foreach ($entry in @(Get-TrustedPathsEntry -ProductPath $Instance.ProductPath)) {
@@ -188,16 +239,22 @@ function Remove-InstanceRegistration {
             $touched++
         }
     }
-    return [pscustomobject]@{ RemovedKey = $removedKey; ProfilesUpdated = $touched }
+    return [pscustomobject]@{ Removed = $removed.ToArray(); ProfilesUpdated = $touched }
 }
 
 function Test-InstanceRegistered {
-    param($Instance, [string]$Loader)
-    $appKey = Get-RegistrationKey -ProductPath $Instance.ProductPath
-    if (-not (Test-Path -LiteralPath $appKey)) { return $false }
-    $item = Get-ItemProperty -LiteralPath $appKey -ErrorAction SilentlyContinue
-    if ($item -eq $null) { return $false }
-    $prop = $item.PSObject.Properties['LOADER']
-    if ($prop -eq $null) { return $false }
-    return ([string]$prop.Value).Equals($Loader, [StringComparison]::OrdinalIgnoreCase)
+    param(
+        [Parameter(Mandatory)]$Instance,
+        [Parameter(Mandatory)][object[]]$Products
+    )
+    foreach ($product in $Products) {
+        $appKey = Get-RegistrationKey -ProductPath $Instance.ProductPath -AppKey ([string]$product.AppKey)
+        if (-not (Test-Path -LiteralPath $appKey)) { return $false }
+        $item = Get-ItemProperty -LiteralPath $appKey -ErrorAction SilentlyContinue
+        if ($item -eq $null) { return $false }
+        $prop = $item.PSObject.Properties['LOADER']
+        if ($prop -eq $null) { return $false }
+        if (-not ([string]$prop.Value).Equals([string]$product.Loader, [StringComparison]::OrdinalIgnoreCase)) { return $false }
+    }
+    return $true
 }

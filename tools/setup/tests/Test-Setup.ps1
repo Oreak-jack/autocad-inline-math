@@ -265,6 +265,17 @@ try {
 
         $r24.Success -and $r25.Success -and ($loader24 -match 'Win64-2024\\CadMath03\.dll$') -and ($entry24 -eq 'Contents\Win64-2024\CadMath03.dll') -and ($loader25 -match 'Win64\\CadMath03\.dll$')
     }
+    Check '清单里的产品 appKey 重复会被拒绝' {
+        $dup = [IO.File]::ReadAllText($SetupJson, [Text.Encoding]::UTF8) | ConvertFrom-Json
+        $products = @($dup.products)
+        if ($products.Count -lt 2) { return $false }
+        $products[1].appKey = $products[0].appKey
+        $dupPath = Join-Path $root 'setup-dup-products.json'
+        [IO.File]::WriteAllText($dupPath, ($dup | ConvertTo-Json -Depth 10), (New-Object Text.UTF8Encoding($true)))
+        $threw = $false
+        try { $null = Read-SetupManifest -Path $dupPath } catch { $threw = $true }
+        $threw
+    }
 
     Check '适配器声明了构建区间、但实例构建号未知时拒绝' {
         $rangeSetup = [IO.File]::ReadAllText($SetupJson, [Text.Encoding]::UTF8) | ConvertFrom-Json
@@ -349,6 +360,18 @@ try {
         $loader = (Get-ItemProperty -LiteralPath $key).LOADER
         (Test-Path -LiteralPath $loader)
     }
+    Check '两件产品各自注册到同一实例，LOADER 指向各自的 DLL' {
+        $cadKey = Get-RegistrationKey -ProductPath $instance25.ProductPath -AppKey 'CadMathInlineMath'
+        $imeKey = Get-RegistrationKey -ProductPath $instance25.ProductPath -AppKey 'OreakContextInput'
+        if (-not (Test-Path -LiteralPath $cadKey) -or -not (Test-Path -LiteralPath $imeKey)) { return $false }
+        $cadLoader = [string](Get-ItemProperty -LiteralPath $cadKey).LOADER
+        $imeLoader = [string](Get-ItemProperty -LiteralPath $imeKey).LOADER
+        $state = Read-InstallState -StateRoot $stateRoot
+        $products = @($state.instances[0].products)
+        ($cadLoader -like '*CadMath03.dll') -and ($imeLoader -like '*Oreak.ContextInput.dll') -and
+            (Test-Path -LiteralPath $cadLoader) -and (Test-Path -LiteralPath $imeLoader) -and
+            ($products.Count -eq 2)
+    }
     Check 'TRUSTEDPATHS 保留原有路径并追加本产品目录' {
         $vars = $instance25.ProductPath + '\Profiles\<<未命名配置>>\Variables'
         $value = [string](Get-ItemProperty -LiteralPath $vars).TRUSTEDPATHS
@@ -366,6 +389,11 @@ try {
         $r = Invoke-Cli -Extra @('-Remove', 'R25.1\ACAD-9101:804', '-Yes')
         $key = Get-RegistrationKey -ProductPath $instance25.ProductPath
         $r.ExitCode -eq 0 -and -not (Test-Path -LiteralPath $key)
+    }
+    Check '卸载会把两件产品一起清掉' {
+        $cadKey = Get-RegistrationKey -ProductPath $instance25.ProductPath -AppKey 'CadMathInlineMath'
+        $imeKey = Get-RegistrationKey -ProductPath $instance25.ProductPath -AppKey 'OreakContextInput'
+        (-not (Test-Path -LiteralPath $cadKey)) -and (-not (Test-Path -LiteralPath $imeKey))
     }
     Check '卸载后 TRUSTEDPATHS 恢复为原值' {
         $vars = $instance25.ProductPath + '\Profiles\<<未命名配置>>\Variables'

@@ -5,6 +5,45 @@ Set-StrictMode -Version 2
 # 每份 bundle 只承载一个 CLR 代 / 一个 SDK 编译锚，见 docs/VERSION-MATRIX.md。
 $script:CadMathBundleNames = @('CadMath03.bundle', 'CadMath03-2025.bundle', 'CadMath03-2024.bundle', 'CadMath03-2020.bundle', 'CadMath03-2018.bundle', 'CadMath03-2017.bundle', 'CadMath03-2015.bundle')
 
+function Get-ProductTargets {
+    param([Parameter(Mandatory)]$Setup, [Parameter(Mandatory)][string]$Entry)
+    # 一份安装包含若干件产品，每件各自一条注册项、各自一个版本号。
+    # 产品文件与主程序集同目录（Contents\Win64\、Contents\Win64-2020\ …）。
+    $products = @()
+    if ($Setup.PSObject.Properties['products'] -and $Setup.products) { $products = @($Setup.products) }
+    if ($products.Count -eq 0) {
+        $products = @([pscustomobject]@{
+            id = 'cadmath'; name = [string]$Setup.product; version = [string]$Setup.releaseVersion
+            file = (Split-Path -Leaf $Entry); appKey = 'CadMathInlineMath'; description = 'AutoCAD Inline Math'
+        })
+    }
+    $hostDir = Split-Path -Parent $Entry
+    $targets = New-Object System.Collections.Generic.List[object]
+    foreach ($product in $products) {
+        $targets.Add([pscustomobject]@{
+            Id          = [string]$product.id
+            Name        = [string]$product.name
+            Version     = [string]$product.version
+            AppKey      = [string]$product.appKey
+            Description = [string]$product.description
+            Loader      = (Join-Path $hostDir ([string]$product.file))
+        })
+    }
+    return $targets.ToArray()
+}
+
+function Get-RemovalProducts {
+    param([string]$Entry)
+    # 卸载/清理时只用到 AppKey，不关心文件是否还在；两个产品都试一遍，
+    # 这样旧版本装下的（只有一条注册项的）实例也能被彻底清干净。
+    $dir = 'Contents\Win64'
+    if (-not [string]::IsNullOrWhiteSpace($Entry)) { $dir = Split-Path -Parent $Entry }
+    return @(
+        [pscustomobject]@{ Id = 'cadmath'; Name = 'CadMath03'; AppKey = 'CadMathInlineMath'; Loader = (Join-Path $dir 'CadMath03.dll') },
+        [pscustomobject]@{ Id = 'contextinput'; Name = 'Oreak ContextInput'; AppKey = 'OreakContextInput'; Loader = (Join-Path $dir 'Oreak.ContextInput.dll') }
+    )
+}
+
 function Get-StateFile { param([string]$StateRoot) return (Join-Path $StateRoot 'state.json') }
 function Get-JournalFile { param([string]$StateRoot) return (Join-Path $StateRoot 'pending.json') }
 function Get-PayloadRoot { param([string]$StateRoot) return (Join-Path $StateRoot 'payload') }
@@ -284,7 +323,8 @@ function Install-CadMathPackage {
         # 3. 事务开始前快照
         $stateBefore = Read-InstallState -StateRoot $StateRoot
         $snapshots = New-Object System.Collections.Generic.List[object]
-        foreach ($item in $plan) { $snapshots.Add((Get-RegistrationSnapshot -ProductPath $item.Instance.ProductPath)) }
+        $appKeys = @(Get-ProductTargets -Setup $Setup -Entry $script:EntryAssembly | ForEach-Object { $_.AppKey })
+        foreach ($item in $plan) { $snapshots.Add((Get-RegistrationSnapshot -ProductPath $item.Instance.ProductPath -AppKeys $appKeys)) }
         if (Test-Path -LiteralPath $payloadFinal) { $previousPayload = $payloadFinal }
 
         $journal = [pscustomobject]@{
@@ -331,20 +371,36 @@ function Install-CadMathPackage {
         $trusted = Get-OwnedDirectories -PayloadDir $payloadFinal
         $firstLoader = $null
         foreach ($item in $plan) {
-            $loader = Join-Path $payloadFinal $item.Entry
-            if (-not (Test-Path -LiteralPath $loader)) {
-                throw ('负载里缺少 {0} 的宿主程序集：{1}' -f $item.Instance.Label, $item.Entry)
+            $targets = @(Get-ProductTargets -Setup $Setup -Entry $item.Entry)
+            $primary = $targets | Where-Object { $_.Id -eq 'cadmath' } | Select-Object -First 1
+            if ($primary -ne $null -and -not (Test-Path -LiteralPath (Join-Path $payloadFinal $primary.Loader))) {
+                throw ('负载里缺少 {0} 的宿主程序集：{1}' -f $item.Instance.Label, $primary.Loader)
             }
+            # 每件产品各自注册、各自报错：某件缺文件就跳过它，不牵连另一件。
+            $installable = New-Object System.Collections.Generic.List[object]
+            foreach ($target in $targets) {
+                if (Test-Path -LiteralPath (Join-Path $payloadFinal $target.Loader)) {
+                    $installable.Add($target)
+                } else {
+                    Write-Warn -Stage 'REGISTER' ('跳过 {0}：负载里没有 {1}' -f $target.Name, $target.Loader)
+                }
+            }
+            # 注册项里的 LOADER 必须是绝对路径，否则 CAD 加载时会找不到 DLL。
+            foreach ($target in $installable) { $target.Loader = Join-Path $payloadFinal $target.Loader }
             $replace = @()
             if ($previousPayload -and $previousPayload -ne $payloadFinal) {
                 $replace = @(Get-OwnedDirectories -PayloadDir $previousPayload)
             }
-            $registration = Set-InstanceRegistration -Instance $item.Instance -Loader $loader -TrustedDirs $trusted -ReplaceDirs $replace
-            if (-not (Test-InstanceRegistered -Instance $item.Instance -Loader $loader)) {
+            $registration = Set-InstanceRegistration -Instance $item.Instance -Products $installable.ToArray() -TrustedDirs $trusted -ReplaceDirs $replace
+            foreach ($failure in @($registration.Failures)) {
+                Write-Warn -Stage 'REGISTER' ('{0}：写入注册项失败 {1}' -f $failure.Id, $failure.Error)
+            }
+            $verified = @($installable | Where-Object { @($registration.Registered) -contains $_.Id })
+            if (-not (Test-InstanceRegistered -Instance $item.Instance -Products $verified)) {
                 throw ('注册校验失败：{0}' -f $item.Instance.Label)
             }
-            if (-not $firstLoader) { $firstLoader = $loader }
-            Write-Info -Stage 'REGISTER' ('已注册 {0}（{1}；更新 {2} 个配置的 TRUSTEDPATHS）' -f $item.Instance.Label, $item.Entry, $registration.ProfilesUpdated)
+            if (-not $firstLoader -and $primary -ne $null) { $firstLoader = Join-Path $payloadFinal $primary.Loader }
+            Write-Info -Stage 'REGISTER' ('已注册 {0}（{1}；更新 {2} 个配置的 TRUSTEDPATHS）' -f $item.Instance.Label, (($verified | ForEach-Object { $_.Name + '：' + $_.Loader }) -join '；'), $registration.ProfilesUpdated)
         }
         Invoke-FaultInjection -Point 'register'
 
@@ -364,6 +420,9 @@ function Install-CadMathPackage {
                 label       = $item.Instance.Label
                 entry       = $item.Entry
                 loader      = (Join-Path $payloadFinal $item.Entry)
+                products    = @(Get-ProductTargets -Setup $Setup -Entry $item.Entry |
+                    Where-Object { Test-Path -LiteralPath (Join-Path $payloadFinal $_.Loader) } |
+                    ForEach-Object { [pscustomobject]@{ id = $_.Id; name = $_.Name; version = $_.Version; appKey = $_.AppKey; loader = (Join-Path $payloadFinal $_.Loader) } })
                 installedAt = (Get-Date -Format 'o')
             })
         }
@@ -479,8 +538,16 @@ function Restore-TransactionState {
         $problems = New-Object System.Collections.Generic.List[string]
         foreach ($snapshot in @($Journal.snapshots)) {
             if ($snapshot -eq $null) { continue }
-            if ($snapshot.Existed -and -not (Test-Path -LiteralPath ([string]$snapshot.AppKey))) {
-                $problems.Add(('注册项未恢复：{0}' -f $snapshot.AppKey))
+            # 新快照按 Keys 存一条产品一条记录；旧事务日志只有单个 AppKey。
+            $keyEntries = @()
+            if ($snapshot.PSObject.Properties['Keys'] -and $snapshot.Keys) { $keyEntries = @($snapshot.Keys) }
+            elseif ($snapshot.PSObject.Properties['AppKey']) { $keyEntries = @($snapshot) }
+            foreach ($keyEntry in $keyEntries) {
+                if ($keyEntry -eq $null) { continue }
+                if (-not $keyEntry.Existed) { continue }
+                $keyPath = [string]$keyEntry.AppKey
+                if ([string]::IsNullOrWhiteSpace($keyPath)) { continue }
+                if (-not (Test-Path -LiteralPath $keyPath)) { $problems.Add(('注册项未恢复：{0}' -f $keyPath)) }
             }
         }
         if ($Journal.previousPayload) {
@@ -546,14 +613,20 @@ function Uninstall-CadMathInstances {
     }
     foreach ($instance in $Instances) {
         try {
-            $removal = Remove-InstanceRegistration -Instance $instance -OwnedDirs $owned
-            $check = Get-RegistrationKey -ProductPath $instance.ProductPath
-            $ok = -not (Test-Path -LiteralPath $check)
+            $stateEntry = @($state.instances) | Where-Object { $_.instanceId -eq $instance.Id } | Select-Object -First 1
+            $entryRel = $null
+            if ($stateEntry -ne $null -and $stateEntry.PSObject.Properties['entry']) { $entryRel = [string]$stateEntry.entry }
+            $removalProducts = @(Get-RemovalProducts -Entry $entryRel)
+            $removal = Remove-InstanceRegistration -Instance $instance -Products $removalProducts -OwnedDirs $owned
+            $ok = $true
+            foreach ($product in $removalProducts) {
+                if (Test-Path -LiteralPath (Get-RegistrationKey -ProductPath $instance.ProductPath -AppKey $product.AppKey)) { $ok = $false }
+            }
             $results.Add([pscustomobject]@{
                 Instance = $instance.Label
                 Id       = $instance.Id
                 Success  = $ok
-                Detail   = ('删除注册项={0}，恢复 TRUSTEDPATHS 的配置数={1}' -f $removal.RemovedKey, $removal.ProfilesUpdated)
+                Detail   = ('删除注册项={0}，恢复 TRUSTEDPATHS 的配置数={1}' -f (@($removal.Removed) -join '、'), $removal.ProfilesUpdated)
             })
             Write-Info -Stage 'UNINSTALL' ('{0}：{1}' -f $instance.Label, $(if ($ok) { '已卸载' } else { '卸载校验失败' }))
         } catch {
@@ -720,7 +793,7 @@ function Uninstall-CadMathGlobalBundle {
     $cleaned = New-Object System.Collections.Generic.List[string]
     foreach ($instance in (ConvertTo-ItemArray -Value $Instances)) {
         try {
-            $null = Remove-InstanceRegistration -Instance $instance -OwnedDirs $owned
+            $null = Remove-InstanceRegistration -Instance $instance -Products (Get-RemovalProducts -Entry $null) -OwnedDirs $owned
             $cleaned.Add($instance.Label)
         } catch {
             Write-Warn -Stage 'UNINSTALL' ('{0}：清理 TRUSTEDPATHS 失败 {1}' -f $instance.Label, $_.Exception.Message)

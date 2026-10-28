@@ -130,6 +130,16 @@ foreach ($plan in $adaptersPlan) {
     Build-Project $plan.project (Join-Path $staging $plan.key)
 }
 
+# ---- 语境切换模块（独立插件，自己的版本线） ----------------------------
+# 它和 CadMath03 是两件产品：各自一个 ExtensionApplication、各自一条注册项，
+# 只在同一个安装器/发行包里同行。这里按同一套编译锚各编一份，保证能装进每个宿主目录。
+$moduleVersion = '0.1.8'
+Write-Host "构建语境切换模块（七个宿主 · $moduleVersion）"
+foreach ($plan in $hostsPlan) {
+    $moduleProperties = @($plan.properties) + @(('-p:Version=' + $moduleVersion))
+    Build-Project 'src\Oreak.ContextInput.Cad\Oreak.ContextInput.Cad.csproj' (Join-Path $staging ('contextinput-' + $plan.key)) $plan.framework $moduleProperties
+}
+
 # ---- 运行时清单（每个宿主目录一份，只列出自己能用的适配器） ---------------
 $allAdapters = Get-Content -Raw -Encoding UTF8 (Join-Path $root 'adapters\adapters.json') | ConvertFrom-Json
 
@@ -152,9 +162,14 @@ function Write-RuntimeManifest([string]$path, [string]$hostKey) {
 
 # ---- 组装宿主体 ---------------------------------------------------------
 $hostFiles = @('CadMath03.dll', 'CadMath.Core.dll', 'CadMath.Abstractions.dll')
+# 语境切换是独立插件：两个 DLL 直接放在宿主目录里，由各自的 ComponentEntry / 注册项加载。
+$moduleFiles = @('Oreak.ContextInput.dll', 'Oreak.ContextInput.Core.dll')
 foreach ($plan in $hostsPlan) {
     foreach ($file in $hostFiles) {
         Copy-Item (Join-Path (Join-Path $staging $plan.staging) $file) $plan.dir
+    }
+    foreach ($file in $moduleFiles) {
+        Copy-Item (Join-Path (Join-Path $staging ('contextinput-' + $plan.key)) $file) $plan.dir
     }
     Write-RuntimeManifest (Join-Path $plan.dir 'adapters.json') $plan.key
 }
@@ -168,6 +183,7 @@ foreach ($plan in $adaptersPlan) {
 function Write-ApplicationPackage([string]$template, [string]$targetFile) {
     $text = Get-Content -Raw -Encoding UTF8 (Join-Path $root $template)
     $text = $text.Replace('__CADMATH_VERSION__', $version)
+    $text = $text.Replace('__CONTEXTINPUT_VERSION__', $moduleVersion)
     [IO.File]::WriteAllText($targetFile, $text, (New-Object Text.UTF8Encoding($false)))
 }
 
@@ -276,6 +292,13 @@ foreach ($item in @(Get-ChildItem -LiteralPath $dist -Recurse -File -Filter * | 
 
 $supportedSeries = @($releaseAdapters | ForEach-Object { $_.cadSeries } | Sort-Object -Unique)
 
+# 两件独立的产品：各自的版本号、各自的注册项、各自加载。
+# 安装器按这份清单逐个注册/卸载，一个失败不会连累另一个。
+$products = @(
+    [ordered]@{ id = 'cadmath'; name = 'CadMath03'; version = $version; file = 'CadMath03.dll'; appKey = 'CadMathInlineMath'; description = 'AutoCAD Inline Math' },
+    [ordered]@{ id = 'contextinput'; name = 'Oreak ContextInput'; version = $moduleVersion; file = 'Oreak.ContextInput.dll'; appKey = 'OreakContextInput'; description = 'Context-Aware IME Switch' }
+)
+
 # zip 段保留给旧版安装器读（0.4.2~0.4.4 的 StrictMode 会直接访问 $Setup.zip）；
 # 哈希留空，实际校验值在 SHA256SUMS.txt 与 Release 资产里，新版工具走逐文件校验。
 $zipName = if ($Experimental) { "CadMath-InlineMath-$version-experimental.zip" } else { "CadMath-InlineMath-$version.zip" }
@@ -292,6 +315,7 @@ $setup = [ordered]@{
     hosts           = $hosts
     supportedSeries = $supportedSeries
     adapters        = $releaseAdapters
+    products        = $products
     files           = $files
 }
 $setupJson = $setup | ConvertTo-Json -Depth 10

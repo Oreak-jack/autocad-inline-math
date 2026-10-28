@@ -5,5 +5,7 @@
  <Components>
   <RuntimeRequirements OS="Win64" Platform="AutoCAD" SeriesMin="R23.1" SeriesMax="R23.1" />
   <ComponentEntry AppName="CadMath03-2020" AppType=".Net" Version="__CADMATH_VERSION__" ModuleName="./Contents/Win64-2020/CadMath03.dll" LoadOnAutoCADStartup="True" />
+  <!-- 语境切换：独立插件，自己加载自己；它起不来不影响上面那个。 -->
+  <ComponentEntry AppName="OreakContextInput" AppType=".Net" Version="__CONTEXTINPUT_VERSION__" ModuleName="./Contents/Win64-2020/Oreak.ContextInput.dll" LoadOnAutoCADStartup="True" />
  </Components>
 </ApplicationPackage>
